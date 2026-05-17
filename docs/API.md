@@ -1,0 +1,237 @@
+# API Reference
+
+4ES-Dash exposes a small JSON API at `/api/*`. The API is a thin façade over the Steam Web API plus our snapshot database. All responses are JSON, all errors are RFC 7807 problem details.
+
+## Conventions
+
+- **Base URL**: `http://localhost:3000/api` in dev.
+- **Auth (v1)**: none; the server reads `STEAM_ID` from env.
+- **Auth (v2+)**: session cookie issued after Steam OpenID login.
+- **Content type**: `application/json; charset=utf-8`.
+- **IDs**: Steam IDs are 17-digit strings (the 64-bit form), not numbers. Don't lose precision in JS.
+- **Times**: ISO-8601 UTC strings.
+- **Durations**: minutes, integer.
+
+## Error shape
+
+```json
+{
+  "type": "https://4es-dash/errors/steam-private-profile",
+  "title": "Steam profile is private",
+  "status": 403,
+  "detail": "GetOwnedGames requires the user's profile to be public.",
+  "instance": "/api/library"
+}
+```
+
+| `type` slug              | HTTP | When                                          |
+| ------------------------ | ---- | --------------------------------------------- |
+| `steam-rate-limit`       | 429  | Steam returned 429; includes `Retry-After`    |
+| `steam-private-profile`  | 403  | Profile / library not public                  |
+| `steam-auth`             | 401  | Bad or missing API key                        |
+| `steam-transient`        | 502  | Upstream 5xx after retries                    |
+| `validation`             | 400  | Request failed Zod validation                 |
+| `not-found`              | 404  | Resource not in cache/DB and Steam has no data|
+| `internal`               | 500  | Unhandled                                     |
+
+## Endpoints
+
+### `GET /api/profile`
+
+Returns the configured user's public profile.
+
+**Response 200**
+
+```json
+{
+  "steamId": "76561198000000000",
+  "personaName": "Ales",
+  "avatar": {
+    "small": "https://avatars.steamstatic.com/....jpg",
+    "medium": "https://avatars.steamstatic.com/....jpg",
+    "full":   "https://avatars.steamstatic.com/....jpg"
+  },
+  "profileUrl": "https://steamcommunity.com/id/ales",
+  "createdAt": "2008-04-12T00:00:00Z",
+  "level": 42,
+  "countryCode": "US"
+}
+```
+
+### `GET /api/library`
+
+The owned-games list with playtime.
+
+**Query**
+
+| Param       | Type     | Default  | Notes                                       |
+| ----------- | -------- | -------- | ------------------------------------------- |
+| `sort`      | enum     | `playtime` | `playtime` \| `name` \| `recent` \| `added` |
+| `order`     | enum     | `desc`   | `asc` \| `desc`                             |
+| `search`    | string   | —        | Substring match on name                     |
+| `limit`     | int      | 100      | 1–500                                       |
+| `cursor`    | string   | —        | Opaque pagination cursor                    |
+
+**Response 200**
+
+```json
+{
+  "games": [
+    {
+      "appId": 730,
+      "name": "Counter-Strike 2",
+      "iconUrl": "https://media.steampowered.com/.../icon.jpg",
+      "headerUrl": "https://cdn.akamai.steamstatic.com/.../header.jpg",
+      "playtime": { "total": 23410, "twoWeeks": 120 },
+      "lastPlayed": "2026-05-14T22:13:00Z",
+      "hasAchievements": true
+    }
+  ],
+  "nextCursor": "eyJvIjoxMDB9"
+}
+```
+
+### `GET /api/games/:appid`
+
+Detailed view for a single owned game.
+
+**Response 200**
+
+```json
+{
+  "appId": 730,
+  "name": "Counter-Strike 2",
+  "store": {
+    "description": "...",
+    "genres": ["Action", "FPS"],
+    "tags": ["Multiplayer", "Competitive"],
+    "releaseDate": "2012-08-21",
+    "price": { "currency": "USD", "current": 0, "initial": 0 }
+  },
+  "playtime": { "total": 23410, "twoWeeks": 120 },
+  "achievements": {
+    "total": 167,
+    "unlocked": 89,
+    "percentUnlocked": 0.533,
+    "recent": [
+      { "name": "First Blood", "unlockedAt": "2026-05-13T19:02:00Z" }
+    ]
+  },
+  "history": {
+    "playtimePerWeek": [
+      { "weekStarting": "2026-05-04", "minutes": 320 }
+    ]
+  }
+}
+```
+
+### `GET /api/games/:appid/achievements`
+
+Full achievement list.
+
+**Response 200**
+
+```json
+{
+  "appId": 730,
+  "total": 167,
+  "unlocked": 89,
+  "items": [
+    {
+      "apiName": "WIN_ROUNDS_LOW",
+      "displayName": "Body Bagger",
+      "description": "Win 1,000 rounds.",
+      "iconUrl": "https://...",
+      "iconGrayUrl": "https://...",
+      "globalUnlockPercent": 78.4,
+      "unlocked": true,
+      "unlockedAt": "2026-05-13T19:02:00Z"
+    }
+  ]
+}
+```
+
+### `GET /api/recent`
+
+Recently played (last 2 weeks).
+
+**Response 200**
+
+```json
+{
+  "games": [
+    {
+      "appId": 730,
+      "name": "Counter-Strike 2",
+      "playtime": { "twoWeeks": 120, "total": 23410 }
+    }
+  ]
+}
+```
+
+### `GET /api/friends`
+
+(Phase 3.) Friend list with online status.
+
+**Response 200**
+
+```json
+{
+  "friends": [
+    {
+      "steamId": "76561198000000001",
+      "personaName": "Friend",
+      "avatar": { "full": "https://..." },
+      "status": "online",
+      "playing": { "appId": 730, "name": "Counter-Strike 2" }
+    }
+  ]
+}
+```
+
+### `GET /api/stats/summary`
+
+Aggregates for the dashboard hero.
+
+**Response 200**
+
+```json
+{
+  "totals": {
+    "games": 412,
+    "playtime": 1284530,
+    "unplayed": 178,
+    "achievementsUnlocked": 5821
+  },
+  "topGenres": [
+    { "name": "Action", "playtime": 412000 }
+  ]
+}
+```
+
+### `POST /api/jobs/snapshot`
+
+Cron-only. Snapshots playtime + achievements for the configured user.
+
+**Headers**
+
+- `x-cron-secret: <CRON_SECRET>` — required.
+
+**Response 202**
+
+```json
+{ "queued": true, "jobId": "snap_2026_05_17_04_00" }
+```
+
+## Rate limits
+
+- Outbound to Steam: at most 1 request / 250 ms per origin process. The client enforces this with a token-bucket limiter.
+- Inbound on our endpoints: 60 req/min/IP. Returns `429` with `Retry-After`.
+
+## Versioning
+
+The API is currently `v1` implicitly. Breaking changes will introduce `/api/v2/*` rather than mutate existing paths. Additive changes (new fields, new endpoints) are not versioned.
+
+## OpenAPI
+
+A machine-readable spec lives at `docs/openapi.yaml` (TODO — generated from Zod schemas via `zod-to-openapi` once the surface stabilizes).
