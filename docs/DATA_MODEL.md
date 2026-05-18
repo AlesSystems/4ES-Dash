@@ -55,7 +55,7 @@ model Game {
 model OwnedGame {
   steamId         String
   appId           Int
-  acquiredAt      DateTime?
+  acquiredAt      DateTime? // ⚠️ NOT returned by GetOwnedGames; inferred from first snapshot only
   playtimeForever Int     // minutes
   playtimeTwoWeeks Int    // minutes, snapshot of "last 2 weeks"
   lastPlayedAt    DateTime?
@@ -123,6 +123,7 @@ model JobRun {
 - **Playtime is monotonic.** `playtimeForever` should only increase. A decrease indicates a Steam-side correction; the snapshot job logs it and clamps to the previous value.
 - **Genres as JSON for now.** A separate `GameGenre` join table is the right move once we filter by genre, but we ship JSON to keep migrations cheap until then.
 - **Achievement snapshots store counts only.** Per-achievement timestamps already live on `GetPlayerAchievements`; we re-fetch on demand for the detail view and don't archive them.
+- **`acquiredAt` is inferred, not sourced.** The official Steam Web API (`GetOwnedGames`) does not return when a game was added to the library. `acquiredAt` is populated the first time the game appears in a nightly snapshot run. Games that existed in the library before snapshotting started will have `acquiredAt = null`.
 
 ## Derived queries
 

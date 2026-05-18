@@ -15,7 +15,7 @@ The backend lives inside the same Next.js app: route handlers, server actions, s
 
 ## Steam client
 
-`lib/steam/client.ts` is the single place that knows how to talk to Steam.
+`lib/steam/client.ts` is the single place that knows how to talk to the **official Steam Web API** (`api.steampowered.com`).
 
 - One `SteamClient` instance per process. Reads `STEAM_API_KEY` from env on construction; fails fast if missing.
 - All endpoints return Zod-parsed types. If Steam returns a shape we don't expect, we throw `SteamApiError({ kind: "schema" })` — never silently coerce.
@@ -23,6 +23,27 @@ The backend lives inside the same Next.js app: route handlers, server actions, s
 - Retries: 3 attempts with backoff 250 ms / 1 s / 4 s on transient (5xx, network) errors. No retry on 4xx.
 - Empty arrays from Steam are normalized — `IPlayerService` returns `{}` instead of `{ games: [] }` for private profiles; the client maps that to `SteamApiError({ kind: "private" })`.
 
+## Store API client
+
+`lib/steam/store-client.ts` handles calls to the **undocumented Store JSON API** (`store.steampowered.com/api`). This is a separate module from `client.ts` to make the boundary explicit and mocking easy.
+
+Used for: game genres, community tags, description, release date, current price, category flags (multiplayer, co-op, etc.), and wishlist data.
+
+Rules:
+
+- **No `STEAM_API_KEY`** on any Store API request.
+- **`User-Agent: 4ES-Dash/<version>`** header on every request.
+- Batch in groups of **≤ 50 app IDs** with a **500 ms delay between batches** to avoid triggering rate limits.
+- All Store API responses are Zod-parsed. An unexpected shape logs a warning and returns `null` for that game — the UI shows the game without metadata rather than crashing.
+- Retries: 2 attempts with 1 s backoff on transient errors only.
+- No private data is sent to `store.steampowered.com` (only app IDs and the configured Steam ID for wishlist lookups, which is already public information).
+
+Rate limit notes for the Store API:
+
+| Endpoint | Observed limit | Our strategy |
+|----------|----------------|--------------|
+| `appdetails` | ~200 req/5 min per IP | Batch ≤ 50 IDs, 500 ms between batches, 7-day cache |
+| `wishlistdata` | ~60 req/min | 1 req per cron run, 24-hour cache |
 ## Caching
 
 `server/cache.ts` exposes a `cache<T>(key, ttl, loader)` helper.

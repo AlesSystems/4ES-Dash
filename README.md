@@ -21,6 +21,7 @@ Open http://localhost:3000.
 - [Frontend guide](./docs/FRONTEND.md) — RSC, Tailwind, components
 - [Backend guide](./docs/BACKEND.md) — Steam client, cache, jobs
 - [Data model](./docs/DATA_MODEL.md) — Prisma schema and decisions
+- [Steam data sources](./docs/STEAM_DATA_SOURCES.md) — what comes from the official API, what requires the Store API, and what is unavailable
 - [Design system](./docs/DESIGN.md) — colors, type, spacing, tone
 - [Deployment](./docs/DEPLOYMENT.md) — local, Docker, Vercel
 - [Security](./docs/SECURITY.md) — threat model and controls

@@ -21,6 +21,7 @@ This is a single-user (Phase 1) dashboard with a server-side Steam API key. The 
 - **Cron auth**: shared secret in `x-cron-secret`, compared with `crypto.timingSafeEqual`.
 - **Dependencies**: `pnpm audit` runs in CI; Dependabot PRs are reviewed weekly.
 - **Cookies (v2+)**: `HttpOnly`, `Secure`, `SameSite=Lax`. Session ID rotated on login.
+- **Store API calls (SSRF prevention)**: `lib/steam/store-client.ts` only ever connects to a hard-coded `store.steampowered.com` base URL. No user-supplied input is interpolated into the hostname. Only `appId` (integer) and `steamId` (17-digit string validated by Zod) are included as query/path parameters.
 
 ## Reporting
 

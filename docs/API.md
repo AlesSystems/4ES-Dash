@@ -11,6 +11,7 @@
 - **IDs**: Steam IDs are 17-digit strings (the 64-bit form), not numbers. Don't lose precision in JS.
 - **Times**: ISO-8601 UTC strings.
 - **Durations**: minutes, integer.
+- **Data sources**: Most data comes from the official Steam Web API (`api.steampowered.com`). Store metadata (genres, tags, description, price) comes from the undocumented `store.steampowered.com/api/appdetails` endpoint. See [`docs/STEAM_DATA_SOURCES.md`](STEAM_DATA_SOURCES.md) for the full breakdown.
 
 ## Error shape
 
@@ -72,6 +73,8 @@ The owned-games list with playtime.
 | `limit`     | int      | 100      | 1–500                                       |
 | `cursor`    | string   | —        | Opaque pagination cursor                    |
 
+> **Note on `sort=added`:** Steam does not expose game acquisition dates via any API. The `acquiredAt` field is inferred from the first time a game appears in a nightly snapshot and is `null` for games imported before snapshotting began. When `sort=added` is used, games with a known date sort first; games with `acquiredAt = null` fall back to name order.
+
 **Response 200**
 
 ```json
@@ -107,8 +110,7 @@ Detailed view for a single owned game.
     "tags": ["Multiplayer", "Competitive"],
     "releaseDate": "2012-08-21",
     "price": { "currency": "USD", "current": 0, "initial": 0 }
-  },
-  "playtime": { "total": 23410, "twoWeeks": 120 },
+  },  "playtime": { "total": 23410, "twoWeeks": 120 },
   "achievements": {
     "total": 167,
     "unlocked": 89,

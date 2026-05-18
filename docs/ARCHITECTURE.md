@@ -5,24 +5,24 @@
 ## High-level diagram
 
 ```
-┌──────────────┐    HTTPS    ┌────────────────────────────────────┐
-│   Browser    │ ──────────▶ │  Next.js (App Router)              │
-│   (React)    │ ◀────────── │  - RSC pages  /app                 │
-└──────────────┘             │  - Route handlers  /app/api        │
-                             │  - Server actions                   │
-                             └────────┬───────────────┬───────────┘
-                                      │               │
-                              ┌───────▼───┐   ┌───────▼─────────┐
-                              │  Cache    │   │ Steam client    │
-                              │  (Redis / │   │ /lib/steam      │
-                              │  memory)  │   └───────┬─────────┘
-                              └───────┬───┘           │
-                                      │               │ HTTPS
-                              ┌───────▼───┐   ┌───────▼─────────┐
-                              │ Database  │   │ Steam Web API   │
-                              │ (Prisma / │   │ api.steampowered│
-                              │  SQLite)  │   │ .com            │
-                              └───────────┘   └─────────────────┘
+┌──────────────┐    HTTPS    ┌────────────────────────────────────────────────┐
+│   Browser    │ ──────────▶ │  Next.js (App Router)                          │
+│   (React)    │ ◀────────── │  - RSC pages  /app                             │
+└──────────────┘             │  - Route handlers  /app/api                    │
+                             │  - Server actions                               │
+                             └────────┬──────────────────┬─────────────────────┘
+                                      │                  │
+                              ┌───────▼───┐   ┌──────────▼──────────────────────┐
+                              │  Cache    │   │ Steam clients  /lib/steam        │
+                              │  (Redis / │   │  client.ts  ──▶ api.steampowered │
+                              │  memory)  │   │  store-client.ts▶ store.steam    │
+                              └───────┬───┘   └──────────────────────────────────┘
+                                      │
+                              ┌───────▼───┐
+                              │ Database  │
+                              │ (Prisma / │
+                              │  SQLite)  │
+                              └───────────┘
                                       ▲
                                       │ writes snapshots
                               ┌───────┴───┐
@@ -30,6 +30,11 @@
                               │ jobs      │
                               └───────────┘
 ```
+
+Two external data sources are used:
+
+- **`api.steampowered.com`** — the official, key-authenticated Steam Web API. Used for player profiles, owned games, achievements, friends, and playtime. Covered by Steam's published API Terms of Use.
+- **`store.steampowered.com/api`** — the undocumented but stable Store JSON API. Used for game metadata (genres, tags, description, price, categories). No API key required. Accessed only through `lib/steam/store-client.ts` with aggressive caching and graceful degradation. See [`docs/STEAM_DATA_SOURCES.md`](STEAM_DATA_SOURCES.md) for the full breakdown.
 
 ## Tech stack
 
@@ -63,7 +68,9 @@
 │   ├── ui/                   # shadcn primitives
 │   └── charts/
 ├── lib/                      # Pure utilities, shared between client + server
-│   ├── steam/                # Steam Web API client + types
+│   ├── steam/                # Steam API clients + types
+│   │   ├── client.ts         # Official Web API (api.steampowered.com)
+│   │   └── store-client.ts   # Undocumented Store API (store.steampowered.com)
 │   ├── format/               # Number/duration/date formatters
 │   └── zod/                  # Shared Zod schemas
 ├── server/                   # Server-only code (DB, jobs, secrets)
@@ -97,7 +104,8 @@
 | `GetRecentlyPlayedGames`  | 15 min    | The freshness people actually want     |
 | `GetPlayerAchievements`   | 1 hour    | Bounded by per-game playtime           |
 | `GetFriendList`           | 24 hours  | Almost static                          |
-| Store metadata            | 7 days    | Effectively immutable                  |
+| Store metadata (appdetails) | 7 days  | Genres/description rarely change       |
+| Store price overview      | 1 hour    | Price changes are infrequent enough    |
 
 Cache keys are namespaced `steam:<endpoint>:<steamId>[:<appid>]`. The nightly snapshot job invalidates the long-TTL entries it depends on so historical data is always fresh.
 
