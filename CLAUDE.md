@@ -95,6 +95,8 @@ Trigger them proactively when the work matches.
 - [docs/SECURITY.md](docs/SECURITY.md) — threat model and controls
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — local, Docker, Vercel
 - [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) — DoD checklist
+- [docs/HOOKS.md](docs/HOOKS.md) — Claude Code hooks (`.claude/settings.json`) and how to disable them locally
+- [docs/MCP.md](docs/MCP.md) — MCP servers wired in `.mcp.json` (GitHub, Context7) and deferred ones
 
 ## Error Logging
 
