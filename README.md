@@ -33,4 +33,4 @@ Pre-alpha. Following the [roadmap](./ROADMAP.md) — currently in Phase 0.
 
 ## License
 
-MIT.
+Private - AlesSystems
