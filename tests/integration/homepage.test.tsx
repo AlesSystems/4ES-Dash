@@ -21,6 +21,8 @@ describe('HomePage', () => {
     expect(screen.getByText('Ales')).toBeInTheDocument();
     expect(screen.getByText('Counter-Strike 2')).toBeInTheDocument();
     expect(screen.getByText('Dota 2')).toBeInTheDocument();
+    // 1 avatar + 2 game header images (the 2-game fixture); guards the top-N slice.
+    expect(screen.getAllByRole('img')).toHaveLength(3);
   });
 
   it('renders a designed empty state when the library is private', async () => {

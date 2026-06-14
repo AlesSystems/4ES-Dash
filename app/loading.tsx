@@ -3,7 +3,7 @@ const SHELL = 'mx-auto max-w-content px-4 py-8 sm:px-6 lg:px-8';
 
 export default function HomeLoading() {
   return (
-    <main className={SHELL} aria-hidden>
+    <main className={SHELL} aria-busy="true" aria-label="Loading your Steam profile">
       {/* Profile header skeleton */}
       <div className="flex items-center gap-4">
         <div className="h-16 w-16 animate-pulse rounded-full bg-surface-2" />

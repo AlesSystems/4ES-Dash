@@ -28,7 +28,7 @@ export function ProfileHeader({
           <a
             href={profileUrl}
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             className="text-h2 font-semibold text-text-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 hover:text-text-2 transition-colors"
           >
             {personaName}
