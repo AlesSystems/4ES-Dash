@@ -115,6 +115,37 @@ Whenever you create or modify a file in `src/db/`, add or change a Server Action
 
 Multiple agents may work on different modules simultaneously. Do not revert unexpected changes — another agent may have made them. When delegating complex tasks, spawn sub-agents in parallel using claude-sonnet-4-6 by default.
 
+## Orchestration & PR Automation
+
+This is the standing workflow for delivering a roadmap phase (used for Phase 0; reuse it for later phases). The **orchestrator** is the main session; it delegates building to sub-agents and stays the integrator/verifier. The human (`Altan Esmer`) remains the contributor.
+
+**Group work into PRs by dependency tier, not one-PR-per-issue.** Phase 0 shipped as 4 PRs: Foundation (#2,#6,#7,#8) → Steam core (#9,#10,#11) → API (#12) → Homepage (#13). Each tier merges to `main` before the next branches off it, so later work always rebases onto merged contracts.
+
+Per-tier loop:
+
+1. **Branch** from fresh `main`: `git checkout main && git pull && git checkout -b <type>/<slug>`.
+2. **Fan out** to parallel implementation sub-agents (`claude-sonnet-4-6`), each scoped to a **disjoint file set**. Write shared "contract" files first (types, error classes, function signatures, formatters) so consumers can build against a stable import; **serialize barrels and assembly files** (e.g. `components/index.ts`, `app/page.tsx`) — they are the merge points. Give each agent its exact file list + the relevant `docs/` citations.
+3. **Integrate + verify (CI-parity gate)** locally, all must exit 0:
+   ```bash
+   pnpm install --frozen-lockfile
+   cp .env.ci .env
+   pnpm lint && pnpm typecheck && pnpm test && pnpm build
+   ```
+   (CI runs lint before typecheck so `next lint` generates `next-env.d.ts` first.)
+4. **Commit + push per tier.** Conventional Commit, body ends with `Closes #<issues>` and the `Co-Authored-By: Claude ...` trailer. Commits are authored by the human (default git config); PRs are created through the human's `gh` — Claude never becomes the author.
+5. **Open PR**: `gh pr create` with `Closes #`, the milestone, and area labels.
+6. **Review sub-agent** (Sonnet) audits the diff against `docs/ACCEPTANCE.md`, the DoD, the relevant `docs/*`, and these conventions; returns BLOCKERS / NITS / VERDICT.
+7. **Address findings**: fix blockers and cheap nits; **decline out-of-scope feedback with a documented rationale** (e.g. Storybook/live-Steam are Phase 1 — record the waiver as a PR comment rather than silently ignoring). Re-run the gate; push the follow-up.
+8. **Auto-merge when green**: `gh pr checks <n> --watch`, then `gh pr merge <n> --squash --delete-branch`. `Closes #` auto-closes the issues.
+9. Repeat for the next tier; close the milestone when `open=0`.
+
+Hard-won conventions (these bit during Phase 0):
+
+- **No real secrets in CI.** `server/env.ts` parses lazily/memoized (first use, not import) so `build`/tests pass on committed placeholder `.env.ci` / `.env.test`. Tests mock Steam with MSW (`onUnhandledRequest: 'error'` — no live call can slip through). Real `STEAM_API_KEY`/`STEAM_ID` are only for manual `pnpm dev`.
+- **Format only the files you touched** (`pnpm exec prettier --write <files>`), never `pnpm format:write` on the whole tree — it reformats unrelated files (issue templates, others' configs) and pollutes the diff. `.prettierignore` covers `.github`, `*.yml`, `*.md`.
+- **Vitest config is `vitest.config.mts`** (not `.ts`) because `vite-tsconfig-paths` is ESM-only.
+- **ESLint flat-vs-legacy:** pinned ESLint 8 + `.eslintrc.json`; the `@typescript-eslint` plugin must be declared explicitly to reference its rules.
+
 ## Important Notes
 
 - Be concise and clear when providing information to user about implementation or error faced.
