@@ -39,25 +39,56 @@
 
 ### `GET /api/profile`
 
-Returns the configured user's public profile.
+Returns the configured user's public profile and their full owned-game library.
+
+> **Note:** `level` is added in Phase 1 (requires GetSteamLevel). It is not present in Phase 0 responses.
 
 **Response 200**
 
 ```json
 {
-  "steamId": "76561198000000000",
-  "personaName": "Ales",
-  "avatar": {
-    "small": "https://avatars.steamstatic.com/....jpg",
-    "medium": "https://avatars.steamstatic.com/....jpg",
-    "full":   "https://avatars.steamstatic.com/....jpg"
+  "profile": {
+    "steamId": "76561198000000000",
+    "personaName": "Ales",
+    "avatar": {
+      "small":  "https://avatars.steamstatic.com/abc123_small.jpg",
+      "medium": "https://avatars.steamstatic.com/abc123_medium.jpg",
+      "full":   "https://avatars.steamstatic.com/abc123_full.jpg"
+    },
+    "profileUrl": "https://steamcommunity.com/id/ales/",
+    "createdAt": "2008-04-12T00:00:00.000Z",
+    "countryCode": "US"
   },
-  "profileUrl": "https://steamcommunity.com/id/ales",
-  "createdAt": "2008-04-12T00:00:00Z",
-  "level": 42,
-  "countryCode": "US"
+  "games": [
+    {
+      "appId": 730,
+      "name": "Counter-Strike 2",
+      "iconUrl": "https://media.steampowered.com/steamcommunity/public/images/apps/730/abc123.jpg",
+      "headerUrl": "https://cdn.akamai.steamstatic.com/steam/apps/730/header.jpg",
+      "playtime": { "total": 23410, "twoWeeks": 120 },
+      "lastPlayed": "2024-05-14T22:13:00.000Z",
+      "hasAchievements": true
+    },
+    {
+      "appId": 570,
+      "name": "Dota 2",
+      "iconUrl": "https://media.steampowered.com/steamcommunity/public/images/apps/570/def456.jpg",
+      "headerUrl": "https://cdn.akamai.steamstatic.com/steam/apps/570/header.jpg",
+      "playtime": { "total": 5000, "twoWeeks": 0 },
+      "lastPlayed": null,
+      "hasAchievements": false
+    }
+  ]
 }
 ```
+
+**Errors this endpoint can return**
+
+| `type` slug             | HTTP | When                               |
+| ----------------------- | ---- | ---------------------------------- |
+| `steam-private-profile` | 403  | Steam library or profile is private |
+| `steam-auth`            | 401  | Bad or missing Steam API key        |
+| `validation`            | 400  | Response failed Zod schema check    |
 
 ### `GET /api/library`
 
