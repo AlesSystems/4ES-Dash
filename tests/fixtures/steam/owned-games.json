@@ -1,0 +1,22 @@
+{
+  "response": {
+    "game_count": 2,
+    "games": [
+      {
+        "appid": 730,
+        "name": "Counter-Strike 2",
+        "playtime_forever": 23410,
+        "playtime_2weeks": 120,
+        "img_icon_url": "abc123",
+        "has_community_visible_stats": true,
+        "rtime_last_played": 1715724780
+      },
+      {
+        "appid": 570,
+        "name": "Dota 2",
+        "playtime_forever": 5000,
+        "img_icon_url": "def456"
+      }
+    ]
+  }
+}

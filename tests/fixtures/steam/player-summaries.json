@@ -1,0 +1,23 @@
+{
+  "response": {
+    "players": [
+      {
+        "steamid": "76561198000000000",
+        "communityvisibilitystate": 3,
+        "profilestate": 1,
+        "personaname": "Ales",
+        "profileurl": "https://steamcommunity.com/id/ales/",
+        "avatar": "https://avatars.steamstatic.com/abc123_small.jpg",
+        "avatarmedium": "https://avatars.steamstatic.com/abc123_medium.jpg",
+        "avatarfull": "https://avatars.steamstatic.com/abc123_full.jpg",
+        "avatarhash": "abc123",
+        "personastate": 1,
+        "realname": "Ales",
+        "primaryclanid": "103582791429521408",
+        "timecreated": 1208044800,
+        "personastateflags": 0,
+        "loccountrycode": "US"
+      }
+    ]
+  }
+}
