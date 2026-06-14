@@ -61,9 +61,7 @@ describe('GET /api/profile – happy path', () => {
 
 describe('GET /api/profile – auth error', () => {
   it('returns 401 with a steam-auth problem body', async () => {
-    steamServer.use(
-      http.get(PLAYER_SUMMARIES_URL, () => new HttpResponse(null, { status: 401 })),
-    );
+    steamServer.use(http.get(PLAYER_SUMMARIES_URL, () => new HttpResponse(null, { status: 401 })));
 
     const res = await callGET();
     expect(res.status).toBe(401);
@@ -80,9 +78,7 @@ describe('GET /api/profile – auth error', () => {
 
 describe('GET /api/profile – private profile', () => {
   it('returns 403 with a steam-private-profile problem body', async () => {
-    steamServer.use(
-      http.get(OWNED_GAMES_URL, () => HttpResponse.json({ response: {} })),
-    );
+    steamServer.use(http.get(OWNED_GAMES_URL, () => HttpResponse.json({ response: {} })));
 
     const res = await callGET();
     expect(res.status).toBe(403);
@@ -90,5 +86,28 @@ describe('GET /api/profile – private profile', () => {
     const body = (await res.json()) as Record<string, unknown>;
     expect(typeof body['type']).toBe('string');
     expect((body['type'] as string).endsWith('steam-private-profile')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Unexpected Steam shape → 400 RFC 7807 validation (ACCEPTANCE #12 line 56)
+// ---------------------------------------------------------------------------
+
+describe('GET /api/profile – unexpected Steam shape', () => {
+  it('returns 400 with a validation problem body', async () => {
+    steamServer.use(
+      http.get(PLAYER_SUMMARIES_URL, () =>
+        HttpResponse.json({ response: { players: 'not-an-array' } }),
+      ),
+    );
+
+    const res = await callGET();
+    expect(res.status).toBe(400);
+
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(typeof body['type']).toBe('string');
+    expect((body['type'] as string).endsWith('validation')).toBe(true);
+    expect(body['title']).toBeDefined();
+    expect(body['detail']).toBeDefined();
   });
 });

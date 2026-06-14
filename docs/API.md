@@ -56,7 +56,7 @@ Returns the configured user's public profile and their full owned-game library.
       "full":   "https://avatars.steamstatic.com/abc123_full.jpg"
     },
     "profileUrl": "https://steamcommunity.com/id/ales/",
-    "createdAt": "2008-04-12T00:00:00.000Z",
+    "createdAt": "2008-04-13T00:00:00.000Z",
     "countryCode": "US"
   },
   "games": [
