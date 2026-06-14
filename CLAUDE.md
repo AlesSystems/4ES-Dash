@@ -102,6 +102,7 @@ Trigger them proactively when the work matches.
 - [docs/ERROR.md](docs/ERROR.md) — central error log (ERR-XXXX); append every error, never delete
 - [docs/HOOKS.md](docs/HOOKS.md) — Claude Code hooks (`.claude/settings.json`) and how to disable them locally
 - [docs/MCP.md](docs/MCP.md) — MCP servers wired in `.mcp.json` (GitHub, Context7) and deferred ones
+- [docs/design/](docs/design/README.md) — Claude Design handoff bundle: HTML/JSX page mockups (Dashboard, Library, Game Detail, Friends, Settings, Year in Review) + design chat transcripts. Reference (read transcripts first, recreate pixel-perfect) when implementing each page in Phases 1+. Prototypes, not source — excluded from build/lint/test.
 
 ## Error Logging
 

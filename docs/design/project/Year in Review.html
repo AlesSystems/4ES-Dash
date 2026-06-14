@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>4ES-Dash · Year in Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400;1,8..60,500&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; background: #f0eee9; font-family: -apple-system, system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  .frame-host { overflow: hidden; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="data.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="library.jsx"></script>
+<script type="text/babel" src="year-in-review.jsx"></script>
+<script type="text/babel" src="year-in-review-sections.jsx"></script>
+<script type="text/babel" src="year-in-review-end.jsx"></script>
+<script type="text/babel">
+  const { useEffect, useState } = React;
+
+  function Frame({ children }) {
+    return <div className="frame-host" style={{ width: '100%', height: '100%' }}>{children}</div>;
+  }
+
+  function App() {
+    const [ready, setReady] = useState(false);
+    useEffect(() => {
+      const tick = () => {
+        if (window.YearInReviewPopulated && window.YearInReviewEarly && window.DesignCanvas && window.WR_TOKENS_LIB) setReady(true);
+        else setTimeout(tick, 30);
+      };
+      tick();
+    }, []);
+    if (!ready) return <div style={{ padding: 40, fontFamily: 'system-ui', color: '#5a4a2a' }}>Loading…</div>;
+
+    const W = 1440;
+    const Hp = 6000;  // populated
+    const He = 5140;  // early-data
+
+    return (
+      <DesignCanvas
+        title="4ES-Dash · Year in Review"
+        subtitle="Continuing Direction 2 (Wrapped) — the page it was named for. A long-scroll editorial chapter, not a dashboard. The 2025 glyph is the typographic signature of the system: Source Serif at 460 px / 0.86. Content column 1040 px. Section rhythm varies on purpose — cover (tall) → playtime (medium) → top games (uneven, #1 theatrical) → achievements (medium) → genre (compact) → shelf (grid) → outro (small). Two states × two themes."
+      >
+        <DCSection
+          id="populated"
+          title="Populated · 2025 · 612.8 hours"
+          subtitle="A full year of data. Cover lays the 2025 glyph monumentally; the playtime chart annotates October's BG3 peak and June's quiet weekend; the top-games chapter goes uneven on purpose — #1 gets the editorial full-bleed card, #2 and #3 ride half-width, #4–#10 fall into a tight typographic ranked list. Achievements anchor with the rarest unlock (0.4%, Foe-Smiter), genre share resolves in a single restrained stacked bar, shelf renders 8 of 27 with status pills, and the outro is a quiet 'See you in 2026.' Total ~3520 px tall."
+        >
+          <DCArtboard id="yr-pop-dark" label="01a · Populated · Dark" width={W} height={Hp}>
+            <Frame><YearInReviewPopulated theme="dark" /></Frame>
+          </DCArtboard>
+          <DCArtboard id="yr-pop-light" label="01b · Populated · Light" width={W} height={Hp}>
+            <Frame><YearInReviewPopulated theme="light" /></Frame>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="early"
+          title="Early-data · joined Oct 12 · 38.4 hours"
+          subtitle="The user joined the platform partway through the year. The page acknowledges the partial year honestly and adjusts which sections render: the cover keeps its monumental 2025 — the user is still inside this year — but the delta line goes calm ('This is your first year — nothing to compare against yet'); the chart shows only Oct/Nov/Dec with the prior 9 months drawn as faint gridlines at zero (no shrinking); top games still gives #1 the full-bleed (Stardew), #2 and #3 the half-width cards, then the ranked list is replaced by a single calm line; achievements collapses to 2 KPIs; genre share becomes a calm typographic block (one game = 74% — a chart would be dishonest); shelf shows 4 tiles; the outro reads 'Welcome. See you next year.' with the 2024 button hidden. Total ~2880 px tall."
+        >
+          <DCArtboard id="yr-early-dark" label="02a · Early-data · Dark" width={W} height={He}>
+            <Frame><YearInReviewEarly theme="dark" /></Frame>
+          </DCArtboard>
+          <DCArtboard id="yr-early-light" label="02b · Early-data · Light" width={W} height={He}>
+            <Frame><YearInReviewEarly theme="light" /></Frame>
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+    );
+  }
+
+  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
