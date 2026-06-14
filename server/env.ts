@@ -14,6 +14,7 @@ const EnvSchema = z.object({
   STEAM_API_KEY: z.string().min(1, 'is required'),
   DATABASE_URL: z.string().min(1).default('file:./dev.db'),
   REDIS_URL: z.string().url().optional(),
+  // Required in Phase 2+ (cron routes); optional during Phase 0–1 so dev needs no cron setup.
   CRON_SECRET: z.string().min(1).optional(),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 });

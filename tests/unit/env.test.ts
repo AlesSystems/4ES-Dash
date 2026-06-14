@@ -34,6 +34,12 @@ describe('getEnv', () => {
     expect(() => getEnv()).toThrow(/STEAM_API_KEY/);
   });
 
+  it('throws a clear error when STEAM_ID is missing', async () => {
+    delete process.env.STEAM_ID;
+    const { getEnv } = await import('@/server/env');
+    expect(() => getEnv()).toThrow(/STEAM_ID/);
+  });
+
   it('throws when STEAM_ID is not a 17-digit string', async () => {
     process.env.STEAM_ID = '12345';
     const { getEnv } = await import('@/server/env');
