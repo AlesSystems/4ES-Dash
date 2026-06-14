@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>4ES-Dash · Settings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400;1,8..60,500&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; background: #f0eee9; font-family: -apple-system, system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  .frame-host { overflow: hidden; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="data.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="library.jsx"></script>
+<script type="text/babel" src="settings.jsx"></script>
+<script type="text/babel" src="settings-page.jsx"></script>
+<script type="text/babel">
+  const { useEffect, useState } = React;
+
+  function Frame({ children }) {
+    return <div className="frame-host" style={{ width: '100%', height: '100%' }}>{children}</div>;
+  }
+
+  function App() {
+    const [ready, setReady] = useState(false);
+    useEffect(() => {
+      const tick = () => {
+        if (window.SettingsPage && window.DesignCanvas && window.WR_TOKENS_LIB) setReady(true);
+        else setTimeout(tick, 30);
+      };
+      tick();
+    }, []);
+    if (!ready) return <div style={{ padding: 40, fontFamily: 'system-ui', color: '#5a4a2a' }}>Loading…</div>;
+
+    const W = 1440;
+    const H_PAGE = 3700;   // default + dirty (full settings page)
+    const H_MODAL = 1120;  // modal-focused frame
+
+    return (
+      <DesignCanvas
+        title="4ES-Dash · Settings"
+        subtitle="Settings is the page that proves Wrapped survives unglamorous, dense, functional work. Editorial type and warm paper at higher density: a fixed 220 px in-page section nav (sticky to viewport), a 720 px main column, an empty 140 px right margin — Wrapped's breathing room without filler. Every row is label / one-line helper / control / optional status. Toggles, segmented controls, hairline-bordered inputs, calm save bar, restrained danger band. Three states × two themes."
+      >
+        <DCSection
+          id="default"
+          title="Default · at-rest"
+          subtitle="The form is clean: every setting shows its saved value, nothing is dirty, the save bar is absent. This establishes the resting visual rhythm — section spacing, label-helper-control alignment, hairline borders, the active-toggle accent, the calm-but-acknowledged Danger Zone band. Account is the active section in the left rail."
+        >
+          <DCArtboard id="set-default-dark" label="01a · Default · Dark" width={W} height={H_PAGE}>
+            <Frame><SettingsPage theme="dark" state="default" /></Frame>
+          </DCArtboard>
+          <DCArtboard id="set-default-light" label="01b · Default · Light" width={W} height={H_PAGE}>
+            <Frame><SettingsPage theme="light" state="default" /></Frame>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="dirty"
+          title="Dirty · 2 unsaved changes"
+          subtitle="The user has flipped the theme and toggled Achievement unlocks on. Two restrained ● glyphs in brand accent mark the edited rows; the segmented control shows the new selection but the page still renders in the saved theme, annotated 'preview after save'. A calm save bar pins to the bottom of the content area with Discard (ghost) and Save changes (primary). No alarm color, no toast, no navigate-away interrupts."
+        >
+          <DCArtboard id="set-dirty-dark" label="02a · Dirty · Dark" width={W} height={H_PAGE}>
+            <Frame><SettingsPage theme="dark" state="dirty" /></Frame>
+          </DCArtboard>
+          <DCArtboard id="set-dirty-light" label="02b · Dirty · Light" width={W} height={H_PAGE}>
+            <Frame><SettingsPage theme="light" state="dirty" /></Frame>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="modal"
+          title="Destructive confirmation · Delete 87 days of snapshot history"
+          subtitle="The user clicked Delete history in the Danger Zone. A scrim with a 4 px blur dims the page; the modal is the only element in the system that gets a soft shadow. The modal chrome itself is neutral surface — danger language lives in the warning glyph, the heading, and the destructive button. A typed-confirmation input arms the destructive action: shown filled with 'delete' so the button is active. Frame focuses on the moment — left rail shifts to highlight Danger zone."
+        >
+          <DCArtboard id="set-modal-dark" label="03a · Confirm · Dark" width={W} height={H_MODAL}>
+            <Frame><SettingsPage theme="dark" state="modal" /></Frame>
+          </DCArtboard>
+          <DCArtboard id="set-modal-light" label="03b · Confirm · Light" width={W} height={H_MODAL}>
+            <Frame><SettingsPage theme="light" state="modal" /></Frame>
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+    );
+  }
+
+  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

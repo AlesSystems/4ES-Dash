@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>4ES-Dash · Game detail</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400;1,8..60,500&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; background: #f0eee9; font-family: -apple-system, system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  .frame-host { overflow: hidden; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="data.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="library.jsx"></script>
+<script type="text/babel" src="game-detail.jsx"></script>
+<script type="text/babel">
+  const { useEffect, useState } = React;
+
+  function Frame({ children }) {
+    return <div className="frame-host" style={{ width: '100%', height: '100%' }}>{children}</div>;
+  }
+
+  function App() {
+    const [ready, setReady] = useState(false);
+    useEffect(() => {
+      const tick = () => {
+        if (window.GameDetailPopulated && window.GameDetailUntouched && window.DesignCanvas && window.WR_TOKENS_LIB) setReady(true);
+        else setTimeout(tick, 30);
+      };
+      tick();
+    }, []);
+    if (!ready) return <div style={{ padding: 40, fontFamily: 'system-ui', color: '#5a4a2a' }}>Loading…</div>;
+
+    const W = 1440, Hp = 2200, Hu = 1900;
+    return (
+      <DesignCanvas
+        title="4ES-Dash · Game detail page"
+        subtitle="Continuing Direction 2 (Wrapped). The hero earns the page — blurred key art as ambient backdrop, crisp 460 × 215 header framed on the right, title in Source Serif at 84 px, hero playtime KPI at 168 px. Reuses the established palette, sidebar, app bar, chart treatment. Four frames at 1440 wide: populated × 2 themes, untouched × 2 themes."
+      >
+        <DCSection
+          id="populated"
+          title="Populated · Baldur's Gate 3 · 142.3 hours"
+          subtitle="The page Wrapped was made for. Above the fold: breadcrumb, title, subtitle, tag row, the giant 142.3 KPI face, action row, KPI strip, and the top half of the playtime chart. Trend answers in under one second; peak annotated; today guide visible."
+        >
+          <DCArtboard id="gd-pop-dark" label="01a · Populated · Dark" width={W} height={Hp}>
+            <Frame><GameDetailPopulated theme="dark" /></Frame>
+          </DCArtboard>
+          <DCArtboard id="gd-pop-light" label="01b · Populated · Light" width={W} height={Hp}>
+            <Frame><GameDetailPopulated theme="light" /></Frame>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="untouched"
+          title="Untouched · Subnautica · 0 hours, owned since 2019"
+          subtitle="The shelf game. Hero still earns the page — 0 set in display serif at hero scale, calm 'waiting 7 years' subtitle. KPI row collapses to 2 cards (cost/hour and last-played hidden, replaced by Owned-for). Chart replaced with a designed empty composition — same vertical space, dashed border, faint horizon lines, editorial copy. Achievements all locked, sorted by rarity. Friends becomes a calm note. Metadata is unchanged — metadata is metadata."
+        >
+          <DCArtboard id="gd-unt-dark" label="02a · Untouched · Dark" width={W} height={Hu}>
+            <Frame><GameDetailUntouched theme="dark" /></Frame>
+          </DCArtboard>
+          <DCArtboard id="gd-unt-light" label="02b · Untouched · Light" width={W} height={Hu}>
+            <Frame><GameDetailUntouched theme="light" /></Frame>
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+    );
+  }
+
+  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

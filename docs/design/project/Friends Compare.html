@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>4ES-Dash · Friends + Compare</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400;1,8..60,500&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; background: #f0eee9; font-family: -apple-system, system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  .frame-host { overflow: hidden; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="data.js"></script>
+<!-- WR_TOKENS_LIB lives on library.jsx; load it so friends-shared can extend it. -->
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="library.jsx"></script>
+<script type="text/babel" src="friends-shared.jsx"></script>
+<script type="text/babel" src="friends-populated.jsx"></script>
+<script type="text/babel" src="friends-compare.jsx"></script>
+<script type="text/babel" src="friends-empty.jsx"></script>
+<script type="text/babel">
+  const { useEffect, useState } = React;
+
+  function Frame({ children }) {
+    return <div className="frame-host" style={{ width: '100%', height: '100%' }}>{children}</div>;
+  }
+
+  function App() {
+    const [ready, setReady] = useState(false);
+    useEffect(() => {
+      const tick = () => {
+        if (window.FriendsPopulated && window.CompareDetail && window.FriendsEmpty && window.DesignCanvas && window.WR_TOKENS_LIB) setReady(true);
+        else setTimeout(tick, 30);
+      };
+      tick();
+    }, []);
+    if (!ready) return <div style={{ padding: 40, fontFamily: 'system-ui', color: '#5a4a2a' }}>Loading…</div>;
+
+    const W = 1440;
+    return (
+      <DesignCanvas
+        title="4ES-Dash · Friends + Compare"
+        subtitle="Continuing Direction 2 (Wrapped). Social data without becoming a social product: no leaderboards, no nag copy, dot-plus-label status. Avatars are invented (gradient + letterform + geometric), never photographic. Compare uses a two-color convention — cool = you, warm = them — consistently across every visualisation."
+      >
+        <DCSection
+          id="friends-index"
+          title="Friends index · populated"
+          subtitle="Editorial header with the three honest numbers, a Now playing strip pulling ambient color from the current game's art, the friend tile (64 px avatar + status dot+label + relational stats line + Compare ghost button), and a 280-wide activity feed reporting events in calm voice. Two-column friend grid at 1440 leaves room for the activity column without cramping the tiles."
+        >
+          <DCArtboard id="fr-pop-dark"  label="01a · Populated · Dark"  width={W} height={1322}>
+            <Frame><FriendsPopulated theme="dark" /></Frame>
+          </DCArtboard>
+          <DCArtboard id="fr-pop-light" label="01b · Populated · Light" width={W} height={1322}>
+            <Frame><FriendsPopulated theme="light" /></Frame>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="compare-detail"
+          title="Compare detail · You vs kael"
+          subtitle="Two-user header at 96-px avatars with the cool/warm bands setting the convention, three KPI cards for the 84 shared games, then the centerpiece: a head-to-head divergent bar list sorted by combined hours. Both sides use neutral chart hues — the bar tells the truth without coding either user as winning. Below: a stacked-bar genre overlap and a two-column 'in their library / in your library' surface for discovery, not nag."
+        >
+          <DCArtboard id="cmp-dark"  label="02a · Compare · Dark"  width={W} height={1900}>
+            <Frame><CompareDetail theme="dark" /></Frame>
+          </DCArtboard>
+          <DCArtboard id="cmp-light" label="02b · Compare · Light" width={W} height={1900}>
+            <Frame><CompareDetail theme="light" /></Frame>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="friends-empty"
+          title="Friends index · empty (privacy or empty list)"
+          subtitle="Not the onboarding-zero case — this is the realistic Phase 3+ edge: the user has Steam, but their friends list is private or empty. Controls bar, Now playing, and activity feed are hidden (filters on nothing are noise). A typographic empty composition with an oversized italic ampersand sets the tone, then a Compare-with-anyone card converts the dead-end into the page's secondary purpose: paste a SteamID and the comparison still works."
+        >
+          <DCArtboard id="fr-emp-dark"  label="03a · Empty · Dark"  width={W} height={1090}>
+            <Frame><FriendsEmpty theme="dark" /></Frame>
+          </DCArtboard>
+          <DCArtboard id="fr-emp-light" label="03b · Empty · Light" width={W} height={1090}>
+            <Frame><FriendsEmpty theme="light" /></Frame>
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+    );
+  }
+
+  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
