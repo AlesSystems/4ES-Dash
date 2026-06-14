@@ -15,39 +15,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check for package.json
-        id: check
-        run: |
-          if [ -f package.json ]; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "No package.json yet — scaffolding pending (Phase 0). Skipping install/lint/typecheck/test."
-          fi
-
       - name: Setup pnpm
-        if: steps.check.outputs.exists == 'true'
         uses: pnpm/action-setup@v4
 
       - name: Setup Node
-        if: steps.check.outputs.exists == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
 
       - name: Install dependencies
-        if: steps.check.outputs.exists == 'true'
         run: pnpm install --frozen-lockfile
 
+      - name: Provision placeholder env
+        run: cp .env.ci .env
+
+      # Lint first: `next lint` generates the gitignored next-env.d.ts that the
+      # typecheck step relies on for Next.js global type augmentations.
       - name: Lint
-        if: steps.check.outputs.exists == 'true'
         run: pnpm lint
 
       - name: Typecheck
-        if: steps.check.outputs.exists == 'true'
         run: pnpm typecheck
 
       - name: Test
-        if: steps.check.outputs.exists == 'true'
         run: pnpm test
+
+      - name: Build
+        run: pnpm build

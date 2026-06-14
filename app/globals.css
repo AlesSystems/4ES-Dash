@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Design tokens — the single source of truth for color.
+ * Light values live on :root; dark overrides under [data-theme='dark'].
+ * The app is dark-first: app/layout.tsx sets data-theme="dark" by default.
+ * See docs/DESIGN.md.
+ */
+:root {
+  --brand-500: #1b6feb;
+  --brand-600: #1559c2;
+
+  --bg: #fafafb;
+  --surface: #ffffff;
+  --surface-2: #f3f4f6;
+  --border: #e5e7eb;
+
+  --text-1: #0b1220;
+  --text-2: #3b4252;
+  --text-3: #6b7280;
+
+  --success: #2ebd6b;
+  --warning: #f5a524;
+  --danger: #e5484d;
+  --info: var(--brand-500);
+
+  --chart-1: #5b9dff;
+  --chart-2: #2ebd6b;
+  --chart-3: #f5a524;
+  --chart-4: #e5484d;
+  --chart-5: #a855f7;
+  --chart-6: #06b6d4;
+  --chart-7: #ec4899;
+  --chart-8: #84cc16;
+}
+
+[data-theme='dark'] {
+  --brand-500: #5b9dff;
+  --brand-600: #4488ee;
+
+  --bg: #0e1116;
+  --surface: #161a22;
+  --surface-2: #1e232d;
+  --border: #262c38;
+
+  --text-1: #e6eaf2;
+  --text-2: #a8b0bf;
+  --text-3: #7a8294;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text-1);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Numeric columns use tabular figures — see docs/DESIGN.md typography. */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
