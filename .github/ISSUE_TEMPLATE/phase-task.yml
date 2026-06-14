@@ -1,0 +1,79 @@
+name: "Phase task"
+description: "A scoped unit of work tied to a roadmap phase."
+title: "feat: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filling this out, review **[docs/ACCEPTANCE.md](https://github.com/AlesSystems/4ES-Dash/blob/main/docs/ACCEPTANCE.md)** for the project-wide acceptance criteria that apply to every task.
+
+  - type: dropdown
+    id: phase
+    attributes:
+      label: "Phase"
+      description: "Which roadmap phase does this task belong to?"
+      options:
+        - "Phase 0 — Foundations"
+        - "Phase 1 — Core dashboard"
+        - "Phase 2 — Persistence & history"
+        - "Phase 3 — Social & comparison"
+        - "Phase 4 — Insights"
+        - "Phase 5 — Polish & ship"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: "Area"
+      description: "Which area of the codebase does this task primarily touch?"
+      options:
+        - "frontend"
+        - "backend"
+        - "api"
+        - "infra"
+        - "design"
+        - "docs"
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: "Goal"
+      description: "What should be true when this task is done? One or two sentences."
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: "Acceptance criteria"
+      description: "Concrete, testable. Mirror/refine the relevant items in docs/ACCEPTANCE.md."
+      value: |
+        - [ ]
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+
+  - type: input
+    id: degraded
+    attributes:
+      label: "Degraded / unavailable-data behavior"
+      description: "If this touches Store API (T2) or unavailable (T4) data, what is the graceful-degradation behavior? See docs/STEAM_DATA_SOURCES.md."
+      placeholder: "e.g. Shows skeleton with 'data unavailable' label; does not block page render."
+
+  - type: textarea
+    id: docs
+    attributes:
+      label: "Relevant docs"
+      description: "Links to docs/, ADRs, or external references that are useful context."
+
+  - type: textarea
+    id: depends
+    attributes:
+      label: "Depends on"
+      description: "Other issues or PRs that must land first."
+      placeholder: "#issue refs / blocked by"

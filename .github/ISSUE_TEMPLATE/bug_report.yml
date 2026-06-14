@@ -1,0 +1,68 @@
+name: "Bug report"
+description: "Something is broken or behaving unexpectedly."
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: "What happened?"
+      description: "A clear description of the bug."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: "Expected behavior"
+      description: "What should have happened instead?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: "Steps to reproduce"
+      description: "Numbered steps that reliably reproduce the issue."
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: module
+    attributes:
+      label: "Module"
+      description: "Which module is most likely responsible?"
+      options:
+        - "steam-client"
+        - "store-client"
+        - "cache"
+        - "db"
+        - "jobs"
+        - "api"
+        - "frontend"
+        - "infra"
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: "Severity"
+      options:
+        - "Critical"
+        - "High"
+        - "Medium"
+        - "Low"
+
+  - type: input
+    id: environment
+    attributes:
+      label: "Environment"
+      description: "Node version, OS, deployment target (local / Docker / Vercel), relevant env vars (omit secrets)."
+      placeholder: "e.g. Node 20.x, macOS 14, local dev"
+
+  - type: markdown
+    attributes:
+      value: |
+        > **Note:** Confirmed bugs and their fixes must be logged in **[docs/ERROR.md](https://github.com/AlesSystems/4ES-Dash/blob/main/docs/ERROR.md)** using the ERR-XXXX template.

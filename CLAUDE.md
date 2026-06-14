@@ -50,6 +50,7 @@ These will bite if you don't know them:
 - **Private Steam profiles return `{}`, not `{ games: [] }`** from `IPlayerService`. The client maps that to `SteamApiError({ kind: "private" })`.
 - **Cron routes require `x-cron-secret`** compared with `crypto.timingSafeEqual`. Jobs must be idempotent (compound unique on snapshot keys).
 - **Stale-while-revalidate**: if a fetch exhausts retries, the cache returns the previous value with `stale: true` for the UI to surface.
+- **Data availability — degrade, never crash or fabricate.** Steam doesn't expose everything (price-paid, acquisition date, friends activity feed). Follow the free fallback ladder: official API → Store API → derive from our own snapshots → free *opt-in* enrichment (SteamSpy/IsThereAnyDeal, off by default) → explicit `unavailable`/approximate state. Data-layer functions return `{ available: false, reason }` for missing data so the UI renders a designed empty state — no thrown error reaches the user, no silent zero. See [docs/STEAM_DATA_SOURCES.md](docs/STEAM_DATA_SOURCES.md#data-availability--degradation-strategy).
 - **API key is server-only.** Never prefix with `NEXT_PUBLIC_`. Client components hit `/api/*`, never `api.steampowered.com`.
 - **Image src is allow-listed** to `avatars.steamstatic.com`, `media.steampowered.com`, `cdn.akamai.steamstatic.com` via CSP. No user-supplied URL hits server `fetch`.
 - **Migrations are immutable once merged.** Fix mistakes with a follow-up migration, never edit an existing one.
@@ -66,14 +67,14 @@ These will bite if you don't know them:
 
 ## Skills
 
-This repo ships project-specific Claude skills in `.claude/skills/`:
+This repo ships two project-specific Claude skills in `.claude/skills/`:
 
-- **`design`** — visual / UX decisions (colors, spacing, components, copy tone). Enforces [docs/DESIGN.md](docs/DESIGN.md). Dark-first, calm, information-dense.
-- **`frontend`** — anything shipping HTML/CSS/client JS. Enforces [docs/FRONTEND.md](docs/FRONTEND.md).
 - **`backend`** — Steam client, cache, DB, Prisma, jobs, server actions, route handlers as RSC data sources. Enforces [docs/BACKEND.md](docs/BACKEND.md) and [docs/DATA_MODEL.md](docs/DATA_MODEL.md).
 - **`api`** — public `/api/*` JSON surface and Steam Web API integration. Enforces [docs/API.md](docs/API.md).
 
 Trigger them proactively when the work matches.
+
+> Design and frontend concerns are governed by [docs/DESIGN.md](docs/DESIGN.md) and [docs/FRONTEND.md](docs/FRONTEND.md) (plus the available `design`/`frontend-design` plugin skills). The earlier project-specific `design`/`frontend` skills were removed as duplicates — don't reference them.
 
 ## Code style essentials
 
@@ -86,8 +87,11 @@ Trigger them proactively when the work matches.
 ## Doc map
 
 - [ROADMAP.md](ROADMAP.md) — phased plan; check before starting new work
+- [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) — per-phase, testable acceptance criteria (what "done" means; issues link here)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system overview, directory layout, caching/persistence strategy
+- [docs/adr/](docs/adr/) — architecture decision records (the "why" behind decisions)
 - [docs/API.md](docs/API.md) — public JSON API contract + RFC 7807 error catalog
+- [docs/STEAM_DATA_SOURCES.md](docs/STEAM_DATA_SOURCES.md) — feature → data-source map (T1–T4) + free data-availability strategy
 - [docs/BACKEND.md](docs/BACKEND.md) — Steam client, cache, DB, jobs, env vars
 - [docs/FRONTEND.md](docs/FRONTEND.md) — RSC rules, styling, a11y, performance budgets
 - [docs/DATA_MODEL.md](docs/DATA_MODEL.md) — Prisma schema and the reasoning behind it
@@ -95,6 +99,7 @@ Trigger them proactively when the work matches.
 - [docs/SECURITY.md](docs/SECURITY.md) — threat model and controls
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — local, Docker, Vercel
 - [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) — DoD checklist
+- [docs/ERROR.md](docs/ERROR.md) — central error log (ERR-XXXX); append every error, never delete
 - [docs/HOOKS.md](docs/HOOKS.md) — Claude Code hooks (`.claude/settings.json`) and how to disable them locally
 - [docs/MCP.md](docs/MCP.md) — MCP servers wired in `.mcp.json` (GitHub, Context7) and deferred ones
 
