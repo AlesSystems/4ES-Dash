@@ -1,9 +1,10 @@
 /**
- * In-memory LRU cache with stale-while-revalidate support.
+ * In-memory cache (oldest-insert eviction) with stale-while-revalidate support.
  *
  * This is the Phase 0 implementation (no Redis dependency). The public API
  * is identical to what a Redis-backed implementation would expose, so swapping
- * it in production is a one-file change.
+ * it in production is a one-file change. Known limitation: concurrent misses on
+ * the same key each run the loader (no in-flight de-dup yet — fine for dev).
  *
  * Public surface:
  *   cache<T>(key, ttlSeconds, loader) → Promise<{ value: T; stale: boolean }>

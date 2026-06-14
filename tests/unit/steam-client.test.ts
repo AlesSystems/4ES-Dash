@@ -104,11 +104,8 @@ describe('getOwnedGames – schema error', () => {
 // ---------------------------------------------------------------------------
 
 describe('getOwnedGames – transient / 5xx', () => {
-  it('retries and ultimately throws kind:transient after 3 attempts', async () => {
-    // Use zero backoffs to keep the test fast.
-    const zeroBackoff = [0, 0, 0];
+  it('retries then throws kind:transient after 4 attempts (1 initial + 3 retries)', async () => {
     let callCount = 0;
-
     steamServer.use(
       http.get(OWNED_GAMES_URL, () => {
         callCount++;
@@ -116,40 +113,58 @@ describe('getOwnedGames – transient / 5xx', () => {
       }),
     );
 
-    // Patch withRetry via the module to use zero backoff — instead, we call
-    // the internal retry indirectly.  The simplest approach: use fake timers.
     vi.useFakeTimers();
-
-    const promise = getOwnedGames(STEAM_ID);
-
-    // Advance through each retry delay (default 250, 1000, 4000 ms).
-    // We flush all pending timers repeatedly until the promise settles.
-    let settled = false;
-    const check = promise.then(
-      () => {
-        settled = true;
-      },
-      () => {
-        settled = true;
-      },
-    );
-
-    // Drain all micro/macro tasks including timer delays.
-    for (let i = 0; i < 20 && !settled; i++) {
+    try {
+      const promise = getOwnedGames(STEAM_ID);
+      // Attach the assertion eagerly so the rejection is always handled, then
+      // drive the 250/1000/4000 ms backoff timers until the promise settles.
+      const assertion = expect(promise).rejects.toSatisfy(
+        (err: unknown) => isSteamApiError(err) && err.kind === 'transient',
+      );
       await vi.runAllTimersAsync();
+      await assertion;
+    } finally {
+      vi.useRealTimers();
     }
 
-    await check;
-    vi.useRealTimers();
+    expect(callCount).toBe(4);
+  });
+});
 
-    await expect(promise).rejects.toSatisfy(
-      (err: unknown) => isSteamApiError(err) && err.kind === 'transient',
+// ---------------------------------------------------------------------------
+// Rate limit (429) — must NOT retry
+// ---------------------------------------------------------------------------
+
+describe('getOwnedGames – rate limit', () => {
+  it('throws kind:rate_limit and does not retry on 429', async () => {
+    let callCount = 0;
+    steamServer.use(
+      http.get(OWNED_GAMES_URL, () => {
+        callCount++;
+        return new HttpResponse(null, { status: 429, headers: { 'Retry-After': '30' } });
+      }),
     );
 
-    // 3 total attempts (initial + 2 retries)
-    expect(callCount).toBe(3);
+    await expect(getOwnedGames(STEAM_ID)).rejects.toSatisfy(
+      (err: unknown) => isSteamApiError(err) && err.kind === 'rate_limit',
+    );
+    expect(callCount).toBe(1);
+  });
+});
 
-    void zeroBackoff; // suppress unused-var lint
+// ---------------------------------------------------------------------------
+// getPlayerSummaries – empty players (non-existent / hidden) → schema
+// ---------------------------------------------------------------------------
+
+describe('getPlayerSummaries – empty players', () => {
+  it('throws kind:schema when no player is returned', async () => {
+    steamServer.use(
+      http.get(PLAYER_SUMMARIES_URL, () => HttpResponse.json({ response: { players: [] } })),
+    );
+
+    await expect(getPlayerSummaries(STEAM_ID)).rejects.toSatisfy(
+      (err: unknown) => isSteamApiError(err) && err.kind === 'schema',
+    );
   });
 });
 

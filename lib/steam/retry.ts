@@ -1,10 +1,12 @@
 import { isSteamApiError, SteamApiError } from './errors';
 
-const DEFAULT_ATTEMPTS = 3;
+// 1 initial attempt + 3 retries = 4 total, with backoff before each retry.
+// ACCEPTANCE #9: "retried up to 3 times; a 4th failure throws transient".
+const DEFAULT_ATTEMPTS = 4;
 const DEFAULT_BACKOFF_MS = [250, 1000, 4000] as const;
 
 export interface RetryOptions {
-  /** Total number of attempts (including the first). Default: 3. */
+  /** Total number of attempts (including the first). Default: 4 (1 initial + 3 retries). */
   attempts?: number;
   /** Milliseconds to wait before each retry. Length must be ≥ attempts - 1. */
   backoffMs?: number[];

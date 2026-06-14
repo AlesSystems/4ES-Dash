@@ -26,6 +26,8 @@ export const PROBLEM_CATALOG = {
   'steam-private-profile': { status: 403, title: 'Steam profile is private' },
   'steam-transient': { status: 502, title: 'Steam API temporarily unavailable' },
   validation: { status: 400, title: 'Response validation failed' },
+  // TODO(phase-0-§3): add 'not-found' (404) when /api routes can 404 on missing resources.
+  'not-found': { status: 404, title: 'Resource not found' },
   internal: { status: 500, title: 'Internal server error' },
 } as const satisfies Record<string, { status: number; title: string }>;
 
