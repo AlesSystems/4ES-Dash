@@ -109,6 +109,80 @@ There is no official or unofficial API that returns a real-time or recent friend
 
 ---
 
+## Data availability & degradation strategy
+
+This project is privacy-respecting, self-hostable, and zero-cost. No paid third-party services are ever required. The strategies below define how 4ES-Dash handles data Steam does not fully expose, without fabricating values or crashing.
+
+**Guiding principle: never crash, never fabricate a value, always degrade to a designed empty/unavailable state.**
+
+### Fallback ladder
+
+When a data point is needed, sources are tried in this order:
+
+1. **Official API (T1)** — `api.steampowered.com` authenticated endpoints. Always the first choice.
+2. **Unofficial Store API (T2)** — `store.steampowered.com/api/*`. Used when T1 does not expose the field.
+3. **Derive from our own nightly DB snapshots** — if neither T1 nor T2 exposes the data, compute it from the snapshot table we already accumulate. No extra outbound calls required.
+4. **Free opt-in enrichment** — additional free third-party APIs (SteamSpy, IsThereAnyDeal) that the self-hoster explicitly enables via env vars. Off by default.
+5. **Explicit `unavailable` / approximate state in the UI** — if all prior steps fail or are disabled, the UI renders a designed empty/unavailable state. The data layer signals this with a typed result; a thrown error never reaches the user.
+
+### Typed unavailable states at the data boundary
+
+Data-layer functions return a discriminated result type rather than throwing or returning `null`:
+
+```ts
+type Result<T> =
+  | { available: true;  value: T }
+  | { available: false; reason: Reason };
+
+type Reason = 'private' | 'rate_limit' | 'not_exposed' | 'schema' | 'transient';
+```
+
+This mirrors the existing `SteamApiError.kind` union documented in CLAUDE.md and docs/BACKEND.md. RSCs and client components consume `available: false` to render designed empty states; they never receive a thrown error from a missing data point. On exhausted retries the cache returns the previous value flagged `stale: true` (stale-while-revalidate), which the UI surfaces with a visual indicator rather than an error boundary.
+
+### Snapshot inference (free, no dependencies)
+
+The nightly snapshot job (`IPlayerService/GetOwnedGames/v1`) is the primary free mechanism for data Steam does not timestamp:
+
+- **`acquiredAt`** — set to the first date a game appears in the snapshot table. This value is `null` until the game is seen for the first time. No outbound call needed beyond what the snapshot job already makes.
+- **Playtime trends** — all time-series charts and "year in review" derive from the snapshot table. No extra API calls.
+- **Idle detection** — playtime delta analysis between snapshots; no additional source required.
+
+This is a zero-cost, zero-dependency inference mechanism available to every self-hoster from day one.
+
+### Free opt-in enrichment (off by default, env-gated)
+
+Two free third-party APIs supplement data Steam does not expose. Both are **disabled by default** and must be explicitly opted in via env vars. Enabling them adds outbound calls to third-party servers — a privacy trade-off the self-hoster consciously accepts.
+
+| Service | Env var to enable | Cost | Rate limit | Cache TTL | Supplements |
+|---------|-------------------|------|------------|-----------|-------------|
+| **SteamSpy** (`https://steamspy.com/api.php`) | `ENABLE_STEAMSPY=true` | Free, no API key | ~1 req/sec | ≥ 24 h | Genres/tags, ownership bands |
+| **IsThereAnyDeal** (`https://api.isthereanydeal.com`) | `ITAD_API_KEY=<key>` (free key) | Free API key | Per-key quota | ≥ 24 h | Historical-low price, best current deal |
+
+**No paid services are used anywhere in this project.** If `ENABLE_STEAMSPY` is not set to `true` or `ITAD_API_KEY` is unset, the respective enrichment path is skipped entirely and the UI falls through to the `available: false` state. The privacy implication (extra outbound third-party calls revealing which games you own) is why enrichment is opt-in.
+
+IsThereAnyDeal allows a better approximation of library value and cost-per-hour by supplying historical-low prices, since Steam only exposes the current price.
+
+### Manual import (free)
+
+For data no API exposes — specifically `price_paid` and `acquired_at` — self-hosters may supply values via CSV/JSON import. This fills the T4 gaps for:
+
+- **Accurate cost-per-hour** — using the actual price paid rather than current store price.
+- **`sort=added`** — for games purchased before the snapshot baseline, a manually supplied `acquired_at` overrides the inferred value.
+
+Manual import adds optional DB columns and an import route. It is tracked as a Phase 4 roadmap issue and does not affect core functionality.
+
+### Decision table
+
+| Unavailable / limited data | Tier | Chosen free strategy | Resulting UI behavior |
+|---------------------------|------|----------------------|-----------------------|
+| Acquisition date (`acquiredAt`) | T4 | Snapshot inference — first date game appears in nightly snapshot | Sort by `added` works for games seen since baseline; older games sort last with a UI note |
+| Price paid | T4 | Manual CSV/JSON import (Phase 4); interim: show current price with disclaimer | "Library value" shows current total value; "vs. paid" column shows `—` until import |
+| Friends activity feed | T4 | Not pursued — no free mechanism exists | Feature descoped; friends page shows online status and current game only |
+| Genres / tags | T2 + opt-in T3 | Store API primary; SteamSpy opt-in supplements and fills gaps | Shown when available; card renders without genre chip if missing |
+| Ownership / popularity | Opt-in T3 | SteamSpy opt-in only (`ENABLE_STEAMSPY=true`) | Popularity band shown if SteamSpy enabled; hidden otherwise |
+
+---
+
 ## Undocumented Store API — usage rules
 
 Because `store.steampowered.com/api/appdetails` is undocumented, we apply conservative rules to reduce breakage risk and respect Steam's infrastructure:

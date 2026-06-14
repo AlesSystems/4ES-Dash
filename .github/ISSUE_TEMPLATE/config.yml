@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "Roadmap"
+    url: "https://github.com/AlesSystems/4ES-Dash/blob/main/ROADMAP.md"
+    about: "See the phased plan for what is being built and when."
+  - name: "Contributing guide"
+    url: "https://github.com/AlesSystems/4ES-Dash/blob/main/docs/CONTRIBUTING.md"
+    about: "Branching, commit conventions, Definition of Done, and code style."
