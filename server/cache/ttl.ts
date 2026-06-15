@@ -6,6 +6,7 @@ export const TTL = Object.freeze({
   playerSummaries: 300, // 5 min
   ownedGames: 3600, // 1 h
   recentlyPlayed: 900, // 15 min
+  steamLevel: 86400, // 24 h
   playerAchievements: 3600, // 1 h
   friendList: 86400, // 24 h
   storeMetadata: 604800, // 7 days

@@ -1,0 +1,24 @@
+{
+  "playerstats": {
+    "steamID": "76561198000000000",
+    "gameName": "Counter-Strike 2",
+    "success": true,
+    "achievements": [
+      {
+        "apiname": "WIN_1_MATCH",
+        "achieved": 1,
+        "unlocktime": 1700000000
+      },
+      {
+        "apiname": "WIN_10_MATCHES",
+        "achieved": 0,
+        "unlocktime": 0
+      },
+      {
+        "apiname": "FIRST_KILL",
+        "achieved": 1,
+        "unlocktime": 1699900000
+      }
+    ]
+  }
+}

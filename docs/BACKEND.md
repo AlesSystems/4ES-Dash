@@ -44,6 +44,31 @@ Rate limit notes for the Store API:
 |----------|----------------|--------------|
 | `appdetails` | ~200 req/5 min per IP | Batch ≤ 50 IDs, 500 ms between batches, 7-day cache |
 | `wishlistdata` | ~60 req/min | 1 req per cron run, 24-hour cache |
+
+## Phase 1 data layer
+
+Endpoints added in Phase 1 (each Zod-parsed, rate-limited, cached via `server/repositories/*`):
+
+| Function (`lib/steam`)              | Steam endpoint                              | Repository                          | TTL (`ttl.ts`)        |
+| ----------------------------------- | ------------------------------------------- | ----------------------------------- | --------------------- |
+| `getRecentlyPlayedGames`            | `GetRecentlyPlayedGames/v1`                 | `repositories/recently-played.ts`   | `recentlyPlayed` 15 m |
+| `getSteamLevel`                     | `GetSteamLevel/v1`                          | `repositories/level.ts`             | `steamLevel` 24 h     |
+| `getPlayerAchievements`             | `GetPlayerAchievements/v0001`               | `repositories/achievements.ts`      | `playerAchievements`  |
+| `getSchemaForGame`                  | `GetSchemaForGame/v2`                       | `repositories/achievements.ts`      | `playerAchievements`  |
+| `getGlobalAchievementPercentages`   | `GetGlobalAchievementPercentagesForApp/v2`  | `repositories/achievements.ts`      | `playerAchievements`  |
+| `getStoreMetadata` / `getStorePrice`| Store `appdetails` (undocumented)           | `repositories/store.ts`             | `storeMetadata` 7 d / `storePrice` 1 h |
+
+### Graceful degradation — `Availability<T>` (`lib/result.ts`)
+
+T2/T4 features that Steam may not expose return `Availability<T>` instead of throwing:
+`available(data, stale?)` or `unavailable(reason)` where `reason` is one of
+`private | no-achievements | metadata-unavailable | not-tracked | empty | unknown`.
+The UI renders the matching `<UnavailableState reason=… />` empty state — never a crash or a
+silent zero. Store API failures (network/non-200/`success:false`/bad shape) degrade to
+`unavailable('metadata-unavailable')`; private achievements → `unavailable('private')`; a game
+with no achievement schema → `unavailable('no-achievements')`. See
+[docs/STEAM_DATA_SOURCES.md](STEAM_DATA_SOURCES.md#data-availability--degradation-strategy).
+
 ## Caching
 
 `server/cache.ts` exposes a `cache<T>(key, ttl, loader)` helper.

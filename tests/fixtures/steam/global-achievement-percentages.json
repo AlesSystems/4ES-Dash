@@ -1,0 +1,18 @@
+{
+  "achievementpercentages": {
+    "achievements": [
+      {
+        "name": "WIN_1_MATCH",
+        "percent": 72.5
+      },
+      {
+        "name": "WIN_10_MATCHES",
+        "percent": 48.3
+      },
+      {
+        "name": "FIRST_KILL",
+        "percent": 95.1
+      }
+    ]
+  }
+}
