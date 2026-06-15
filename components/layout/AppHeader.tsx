@@ -4,6 +4,7 @@ import { getLevel } from '@/server/repositories/level';
 import { isSteamApiError } from '@/lib/steam/errors';
 import { formatHours } from '@/lib/format/playtime';
 import { NavLinks } from './NavLinks';
+import { ThemeToggle } from './ThemeToggle';
 
 // ---------------------------------------------------------------------------
 // Placeholder fallbacks — shown on any fetch failure (graceful degradation)
@@ -62,7 +63,7 @@ export async function AppHeader(): Promise<JSX.Element> {
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-bg">
-      <div className="max-w-content mx-auto flex h-14 items-center gap-6 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-content mx-auto flex h-14 items-center gap-3 px-4 sm:gap-6 sm:px-6 lg:px-8">
         {/* Wordmark */}
         <span className="shrink-0 text-h3 font-semibold tracking-tight text-text-1">4ES·Dash</span>
 
@@ -108,7 +109,8 @@ export async function AppHeader(): Promise<JSX.Element> {
             <span>total</span>
           </span>
 
-          {/* theme toggle mounts here (#21) */}
+          {/* Theme toggle (#21) */}
+          <ThemeToggle />
         </div>
       </div>
     </header>
