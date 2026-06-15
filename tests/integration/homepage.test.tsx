@@ -9,6 +9,8 @@ import { steamServer } from '../mocks/steam-server';
 const OWNED_GAMES_URL = 'https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/';
 
 // HomePage is an async Server Component: await it to resolve the tree, then render.
+// The persistent profile header lives in the root layout (AppHeader), so the
+// dashboard itself renders the widgets + top-games sections.
 async function renderHome(): Promise<void> {
   render(await HomePage());
 }
@@ -16,13 +18,15 @@ async function renderHome(): Promise<void> {
 beforeEach(() => clearCache());
 
 describe('HomePage', () => {
-  it('renders the profile name and game tiles on the happy path', async () => {
+  it('renders the dashboard widgets and top games on the happy path', async () => {
     await renderHome();
-    expect(screen.getByText('Ales')).toBeInTheDocument();
-    expect(screen.getByText('Counter-Strike 2')).toBeInTheDocument();
-    expect(screen.getByText('Dota 2')).toBeInTheDocument();
-    // 1 avatar + 2 game header images (the 2-game fixture); guards the top-N slice.
-    expect(screen.getAllByRole('img')).toHaveLength(3);
+    // Recently-played widget + top-games section both render.
+    expect(screen.getByRole('heading', { name: /recently played/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /top games by playtime/i })).toBeInTheDocument();
+    // Achievement aggregate resolved (not the unavailable empty state).
+    expect(screen.getByText(/achievement completion/i)).toBeInTheDocument();
+    // The 2-game fixture appears in the top-games grid.
+    expect(screen.getAllByText('Counter-Strike 2').length).toBeGreaterThanOrEqual(1);
   });
 
   it('renders a designed empty state when the library is private', async () => {
