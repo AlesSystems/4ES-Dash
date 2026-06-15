@@ -51,7 +51,13 @@
 }
 
 @layer base {
-  html {
+  /* color-scheme follows the active theme so native UI (scrollbars, form
+     controls) matches. The theme toggle (#21) flips data-theme on <html>. */
+  :root {
+    color-scheme: light;
+  }
+
+  [data-theme='dark'] {
     color-scheme: dark;
   }
 

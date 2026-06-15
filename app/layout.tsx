@@ -20,10 +20,21 @@ export const metadata: Metadata = {
   description: 'A calm, information-dense personal Steam dashboard.',
 };
 
+// Runs before first paint: applies a persisted light/dark choice by setting
+// data-theme on <html>, so there is no flash of the default (dark) theme. If
+// nothing is stored, the dark-first default rendered on the server stands.
+const THEME_INIT = `(function(){try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark'){document.documentElement.setAttribute('data-theme',t);}}catch(e){}})();`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" data-theme="dark" className={`${inter.variable} ${jetbrainsMono.variable}`}>
+    <html
+      lang="en"
+      data-theme="dark"
+      suppressHydrationWarning
+      className={`${inter.variable} ${jetbrainsMono.variable}`}
+    >
       <body className="min-h-screen bg-bg font-sans text-body text-text-1 antialiased">
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
         <AppHeader />
         {children}
       </body>
