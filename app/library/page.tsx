@@ -1,10 +1,5 @@
 import { isSteamApiError } from '@/lib/steam/errors';
-import {
-  parseSortKey,
-  sortGames,
-  filterGames,
-  acquisitionDatesUnavailable,
-} from '@/lib/games/sort';
+import { parseSortKey, sortGames, filterGames, type LibraryGame } from '@/lib/games/sort';
 import { getProfile } from '@/server/repositories/profile';
 import { EmptyState } from '@/components/states/EmptyState';
 import { StaleBanner } from '@/components/states/StaleBanner';
@@ -46,7 +41,12 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
   const q = searchParams.q ?? '';
   const filtered = filterGames(games, q);
   const shown = sortGames(filtered, sort);
-  const addedUnavailable = acquisitionDatesUnavailable(games);
+  // Show the inferred-date note whenever sort=added is active and ANY game still
+  // lacks an acquiredAt — not only when every game does (#55 review). In Phase 1
+  // no game has a date yet, so this is always true; it stays correct once the
+  // snapshot job (Phase 2) backfills some, but not all, acquisition dates.
+  const libGames: LibraryGame[] = games;
+  const addedUnavailable = libGames.some((g) => (g.acquiredAt ?? null) === null);
 
   return (
     <main className={SHELL}>

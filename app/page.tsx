@@ -49,6 +49,7 @@ export default async function HomePage() {
 
   return (
     <main className={`${SHELL} space-y-10`}>
+      <h1 className="sr-only">Dashboard</h1>
       {stale ? <StaleBanner /> : null}
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">

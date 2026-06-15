@@ -31,7 +31,7 @@ export interface AchievementListProps {
 
 function AchievementRow({ item }: { item: MergedAchievement }): JSX.Element {
   return (
-    <li className="flex items-start gap-4 py-3 border-b border-border last:border-0">
+    <li className="flex items-start gap-4 py-3">
       {/* Icon */}
       {item.iconUrl.length > 0 ? (
         <div className="flex-shrink-0">

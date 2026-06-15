@@ -85,6 +85,11 @@ export function AchievementSummary({ result }: AchievementSummaryProps): JSX.Ele
                     width={32}
                     height={32}
                     sizes="32px"
+                    // Steam serves achievement icons from several CDN hosts that
+                    // aren't all in the next/image allow-list; unoptimized renders
+                    // the URL directly (no server fetch) so an unlisted host can't
+                    // crash the page. Icons are tiny — optimization gain is moot.
+                    unoptimized
                     className="shrink-0 rounded-sm"
                     aria-hidden
                   />
