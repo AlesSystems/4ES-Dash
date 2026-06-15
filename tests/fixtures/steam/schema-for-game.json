@@ -1,0 +1,37 @@
+{
+  "game": {
+    "gameName": "Counter-Strike 2",
+    "gameVersion": "1",
+    "availableGameStats": {
+      "achievements": [
+        {
+          "name": "WIN_1_MATCH",
+          "defaultvalue": 0,
+          "displayName": "Win One Match",
+          "hidden": 0,
+          "description": "Win your first competitive match.",
+          "icon": "https://cdn.steamstatic.com/steam/apps/730/win1match.jpg",
+          "icongray": "https://cdn.steamstatic.com/steam/apps/730/win1match_gray.jpg"
+        },
+        {
+          "name": "WIN_10_MATCHES",
+          "defaultvalue": 0,
+          "displayName": "Win Ten Matches",
+          "hidden": 0,
+          "description": "Win 10 competitive matches.",
+          "icon": "https://cdn.steamstatic.com/steam/apps/730/win10matches.jpg",
+          "icongray": "https://cdn.steamstatic.com/steam/apps/730/win10matches_gray.jpg"
+        },
+        {
+          "name": "FIRST_KILL",
+          "defaultvalue": 0,
+          "displayName": "First Blood",
+          "hidden": 0,
+          "description": "Get your first kill.",
+          "icon": "https://cdn.steamstatic.com/steam/apps/730/firstkill.jpg",
+          "icongray": "https://cdn.steamstatic.com/steam/apps/730/firstkill_gray.jpg"
+        }
+      ]
+    }
+  }
+}
