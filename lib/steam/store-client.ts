@@ -107,22 +107,17 @@ const RawAppDetailsResponse = z.record(z.string(), RawAppDetailsEntry);
 // ---------------------------------------------------------------------------
 
 const STORE_BASE_URL = 'https://store.steampowered.com/api/appdetails';
-const USER_AGENT = '4ES-Dash (+https://github.com/AlesSystems/4ES-Dash)';
+const USER_AGENT = '4ES-Dash/0.0.0 (+https://github.com/AlesSystems/4ES-Dash)';
 
 // ---------------------------------------------------------------------------
 // Internal fetch helper (no API key, custom User-Agent)
 // ---------------------------------------------------------------------------
 
 async function fetchStoreJson(url: string): Promise<unknown> {
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      headers: { 'User-Agent': USER_AGENT },
-    });
-  } catch (err) {
-    // Network / DNS failure — caller maps to unavailable
-    throw err;
-  }
+  // A network/DNS rejection propagates to fetchEntry, which maps it to null.
+  const res = await fetch(url, {
+    headers: { 'User-Agent': USER_AGENT },
+  });
 
   if (!res.ok) {
     throw new Error(`Store API responded with HTTP ${res.status}`);

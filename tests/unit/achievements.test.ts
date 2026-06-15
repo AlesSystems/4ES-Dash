@@ -139,6 +139,21 @@ describe('getPlayerAchievements – no achievements', () => {
     expect(result.reason).toBe('no-achievements');
   });
 
+  it('classifies a "no stats" error as no-achievements even if it mentions "profile"', async () => {
+    steamServer.use(
+      http.get(PLAYER_ACHIEVEMENTS_URL, () =>
+        HttpResponse.json({
+          playerstats: { success: false, error: 'Profile has no stats for this app' },
+        }),
+      ),
+    );
+
+    const result = await getPlayerAchievements(STEAM_ID, APP_ID);
+    expect(result.available).toBe(false);
+    if (result.available) return;
+    expect(result.reason).toBe('no-achievements');
+  });
+
   it('returns unavailable("no-achievements") when success:true but no achievements array', async () => {
     steamServer.use(
       http.get(PLAYER_ACHIEVEMENTS_URL, () =>

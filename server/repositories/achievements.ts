@@ -70,7 +70,10 @@ export async function getGameAchievements(appId: number): Promise<Availability<G
     globalResult.value,
   );
 
-  return available(merged);
+  // Surface staleness if any of the three cached fetches served an expired value
+  // after an upstream failure (stale-while-revalidate).
+  const stale = playerAvailability.stale || schemaResult.stale || globalResult.stale;
+  return available(merged, stale);
 }
 
 // ---------------------------------------------------------------------------
@@ -91,17 +94,18 @@ export async function getAchievementProgress(
 ): Promise<Availability<LibrarySummary>> {
   const results = await Promise.all(appIds.map((id) => getGameAchievements(id)));
 
-  const available_results = results.filter(
+  const availableResults = results.filter(
     (r): r is Extract<typeof r, { available: true }> => r.available,
   );
 
-  if (available_results.length === 0) {
+  if (availableResults.length === 0) {
     return unavailable(
       'no-achievements',
       'No achievement data available for any of the requested games',
     );
   }
 
-  const summary = aggregateLibrary(available_results.map((r) => r.data));
-  return available(summary);
+  const summary = aggregateLibrary(availableResults.map((r) => r.data));
+  const stale = availableResults.some((r) => r.stale);
+  return available(summary, stale);
 }

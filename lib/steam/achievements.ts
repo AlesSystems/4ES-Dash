@@ -221,15 +221,17 @@ export async function getPlayerAchievements(
 
   const { playerstats } = parsed;
 
-  // Private profile check: success:false with an error mentioning profile visibility.
+  // success:false → distinguish "no stats/achievements" from "private profile".
+  // Check the no-stats signal first so a future error string that merely contains
+  // the word "profile" isn't misclassified as private. Never surface the raw
+  // upstream error text to the UI — map to a static, sanitized message.
   if (!playerstats.success) {
-    const errorMsg = playerstats.error ?? '';
-    const lowerMsg = errorMsg.toLowerCase();
-    if (lowerMsg.includes('not public') || lowerMsg.includes('profile')) {
+    const lowerMsg = (playerstats.error ?? '').toLowerCase();
+    const isNoStats = lowerMsg.includes('stat') || lowerMsg.includes('no achievement');
+    if (!isNoStats && (lowerMsg.includes('not public') || lowerMsg.includes('profile'))) {
       return unavailable('private', 'Steam achievement data is not public');
     }
-    // success:false with error about stats (e.g. "Requested app has no stats").
-    return unavailable('no-achievements', errorMsg || 'Game has no achievement stats');
+    return unavailable('no-achievements', 'Game has no achievement stats');
   }
 
   // success:true but no achievements array — game has no achievements.
