@@ -9,6 +9,10 @@
  * See docs/DESIGN.md.
  */
 :root {
+  /* Light is the default theme; the toggle (#21) sets data-theme='dark'.
+     color-scheme lives alongside the tokens (unlayered) so native UI matches. */
+  color-scheme: light;
+
   --brand-500: #1b6feb;
   --brand-600: #1559c2;
 
@@ -37,6 +41,8 @@
 }
 
 [data-theme='dark'] {
+  color-scheme: dark;
+
   --brand-500: #5b9dff;
   --brand-600: #4488ee;
 
@@ -51,16 +57,6 @@
 }
 
 @layer base {
-  /* color-scheme follows the active theme so native UI (scrollbars, form
-     controls) matches. The theme toggle (#21) flips data-theme on <html>. */
-  :root {
-    color-scheme: light;
-  }
-
-  [data-theme='dark'] {
-    color-scheme: dark;
-  }
-
   body {
     background-color: var(--bg);
     color: var(--text-1);

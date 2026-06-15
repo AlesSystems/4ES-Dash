@@ -24,9 +24,13 @@ export function ThemeToggle(): JSX.Element {
   }, []);
 
   function toggle(): void {
-    const next: Theme = theme === 'light' ? 'dark' : 'light';
-    setTheme(next);
+    // Read the live attribute (the source of truth) rather than React state, so
+    // a click can never act on a stale/pre-mount value.
+    const current =
+      document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+    const next: Theme = current === 'light' ? 'dark' : 'light';
     document.documentElement.setAttribute('data-theme', next);
+    setTheme(next);
     try {
       localStorage.setItem('theme', next);
     } catch {
@@ -46,11 +50,11 @@ export function ThemeToggle(): JSX.Element {
     >
       {/* Hidden until mounted so server and client first render match. */}
       {theme === null ? (
-        <span className="h-[18px] w-[18px]" aria-hidden />
+        <span className="h-4 w-4" aria-hidden />
       ) : isDark ? (
-        <Sun size={18} strokeWidth={1.75} aria-hidden />
+        <Sun size={16} strokeWidth={1.75} aria-hidden />
       ) : (
-        <Moon size={18} strokeWidth={1.75} aria-hidden />
+        <Moon size={16} strokeWidth={1.75} aria-hidden />
       )}
     </button>
   );
