@@ -23,6 +23,47 @@ export const SORT_LABELS: Record<SortKey, string> = {
 /** A library game optionally carrying a snapshot-inferred acquisition date. */
 export type LibraryGame = OwnedGame & { acquiredAt?: string | null };
 
+/**
+ * Library status filter. Derived purely from playtime (real data):
+ * - `in-progress`: total playtime > 0
+ * - `untouched`: never played (total playtime === 0)
+ * "Completed" is intentionally absent — it needs per-game achievement data we
+ * can't afford across a full library (see CLAUDE.md degradation contract).
+ */
+export type StatusFilter = 'all' | 'in-progress' | 'untouched';
+
+export const STATUS_KEYS: readonly StatusFilter[] = ['all', 'in-progress', 'untouched'];
+
+export const STATUS_LABELS: Record<StatusFilter, string> = {
+  all: 'All',
+  'in-progress': 'In progress',
+  untouched: 'Untouched',
+};
+
+/** Grid vs list presentation for the results area. */
+export type ViewMode = 'grid' | 'list';
+
+export const VIEW_KEYS: readonly ViewMode[] = ['grid', 'list'];
+
+/** Coerce an untrusted `?status=` value to a valid {@link StatusFilter} (default `all`). */
+export function parseStatusKey(value: string | null | undefined): StatusFilter {
+  return value != null && (STATUS_KEYS as readonly string[]).includes(value)
+    ? (value as StatusFilter)
+    : 'all';
+}
+
+/** Coerce an untrusted `?view=` value to a valid {@link ViewMode} (default `grid`). */
+export function parseViewMode(value: string | null | undefined): ViewMode {
+  return value === 'list' ? 'list' : 'grid';
+}
+
+/** Filter by play status. `all` returns the input unchanged (no copy). */
+export function filterByStatus(games: LibraryGame[], status: StatusFilter): LibraryGame[] {
+  if (status === 'all') return games;
+  if (status === 'untouched') return games.filter((g) => g.playtime.total === 0);
+  return games.filter((g) => g.playtime.total > 0);
+}
+
 /** Coerce an untrusted `?sort=` value to a valid {@link SortKey} (default `playtime`). */
 export function parseSortKey(value: string | null | undefined): SortKey {
   return value != null && (SORT_KEYS as readonly string[]).includes(value)

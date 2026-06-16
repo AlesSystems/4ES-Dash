@@ -2,7 +2,17 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { SORT_KEYS, SORT_LABELS, type SortKey } from '@/lib/games/sort';
+import { LayoutGrid, List, Search } from 'lucide-react';
+import {
+  SORT_KEYS,
+  SORT_LABELS,
+  STATUS_KEYS,
+  STATUS_LABELS,
+  type SortKey,
+  type StatusFilter,
+  type ViewMode,
+} from '@/lib/games/sort';
+import { cn } from '@/lib/utils';
 
 export interface LibraryControlsProps {
   sort: SortKey;
@@ -10,6 +20,8 @@ export interface LibraryControlsProps {
   total: number;
   shown: number;
   addedUnavailable: boolean;
+  status?: StatusFilter;
+  view?: ViewMode;
 }
 
 export function LibraryControls({
@@ -18,7 +30,9 @@ export function LibraryControls({
   total,
   shown,
   addedUnavailable,
-}: LibraryControlsProps) {
+  status = 'all',
+  view = 'grid',
+}: LibraryControlsProps): JSX.Element {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -40,12 +54,13 @@ export function LibraryControls({
       } else {
         params.delete(key);
       }
-      router.replace(`${pathname}?${params.toString()}`);
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname);
     },
     [router, pathname, searchParams],
   );
 
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
     const value = e.target.value;
     setInputValue(value);
 
@@ -57,66 +72,134 @@ export function LibraryControls({
     }, 250);
   };
 
-  const handleSortChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleSortChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
     updateUrl('sort', e.target.value);
   };
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          {/* Search input */}
-          <div>
-            <label htmlFor="library-search" className="sr-only">
-              Search games
-            </label>
-            <input
-              id="library-search"
-              type="search"
-              placeholder="Search games…"
-              value={inputValue}
-              onChange={handleSearchChange}
-              className={[
-                'h-9 w-full rounded-md border border-border bg-surface px-3',
-                'text-body text-text-1 placeholder:text-text-3',
-                'focus:outline-none focus:ring-2 focus:ring-brand-500',
-                'sm:w-56',
-              ].join(' ')}
-            />
-          </div>
-
-          {/* Sort select */}
-          <div>
-            <label htmlFor="library-sort" className="sr-only">
-              Sort by
-            </label>
-            <select
-              id="library-sort"
-              value={sort}
-              onChange={handleSortChange}
-              className={[
-                'h-9 rounded-md border border-border bg-surface px-3 pr-8',
-                'text-body text-text-1',
-                'focus:outline-none focus:ring-2 focus:ring-brand-500',
-              ].join(' ')}
-            >
-              {SORT_KEYS.map((key) => (
-                <option key={key} value={key}>
-                  {SORT_LABELS[key]}
-                </option>
-              ))}
-            </select>
-          </div>
+    <div className="flex flex-col gap-3 border-y border-border py-3.5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+        {/* Search */}
+        <div className="relative lg:w-80">
+          <label htmlFor="library-search" className="sr-only">
+            Search games
+          </label>
+          <Search
+            size={16}
+            strokeWidth={1.75}
+            aria-hidden
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-3"
+          />
+          <input
+            id="library-search"
+            type="search"
+            placeholder="Search your library"
+            value={inputValue}
+            onChange={handleSearchChange}
+            className="h-10 w-full rounded-md border border-border-2 bg-surface pl-9 pr-12 text-body text-text-1 placeholder:text-text-3 focus:outline-none focus:ring-2 focus:ring-brand-500"
+          />
+          <kbd
+            aria-hidden
+            className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 rounded border border-border-2 px-1.5 py-0.5 font-mono text-caption text-text-3 sm:block"
+          >
+            ⌘K
+          </kbd>
         </div>
 
-        {/* Game count */}
-        <p className="text-caption text-text-3 tabular-nums">
-          Showing{' '}
-          <span className="font-medium text-text-2">
-            {shown} of {total}
-          </span>
-        </p>
+        {/* Status filter chips */}
+        <div
+          className="flex flex-wrap items-center gap-2 lg:flex-1"
+          role="group"
+          aria-label="Filter by status"
+        >
+          {STATUS_KEYS.map((key) => {
+            const active = status === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={active}
+                onClick={() => updateUrl('status', key === 'all' ? '' : key)}
+                className={cn(
+                  'rounded-full px-3 py-1.5 text-caption font-medium transition-colors',
+                  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                  active
+                    ? 'bg-brand-500 text-accent-ink'
+                    : 'border border-border-2 text-text-2 hover:text-text-1',
+                )}
+              >
+                {STATUS_LABELS[key]}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Sort */}
+        <div>
+          <label htmlFor="library-sort" className="sr-only">
+            Sort by
+          </label>
+          <select
+            id="library-sort"
+            value={sort}
+            onChange={handleSortChange}
+            className="h-10 rounded-md border border-border-2 bg-surface px-3 pr-8 text-body text-text-1 focus:outline-none focus:ring-2 focus:ring-brand-500"
+          >
+            {SORT_KEYS.map((key) => (
+              <option key={key} value={key}>
+                {SORT_LABELS[key]}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* View toggle */}
+        <div
+          className="inline-flex rounded-md border border-border-2 bg-surface p-1"
+          role="group"
+          aria-label="View mode"
+        >
+          {(
+            [
+              { mode: 'grid', label: 'Grid view', Icon: LayoutGrid },
+              { mode: 'list', label: 'List view', Icon: List },
+            ] as const
+          ).map(({ mode, label, Icon }) => {
+            const active = view === mode;
+            return (
+              <button
+                key={mode}
+                type="button"
+                aria-label={label}
+                aria-pressed={active}
+                onClick={() => updateUrl('view', mode === 'grid' ? '' : mode)}
+                className={cn(
+                  'inline-flex items-center justify-center rounded px-2 py-1 transition-colors',
+                  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                  active ? 'bg-text-1 text-bg' : 'text-text-3 hover:text-text-1',
+                )}
+              >
+                <Icon size={16} strokeWidth={1.75} aria-hidden />
+              </button>
+            );
+          })}
+        </div>
       </div>
+
+      {/* Count line */}
+      <p className="flex flex-wrap items-center gap-2 font-mono text-caption tabular-nums text-text-3">
+        <span>
+          Showing <span className="font-medium text-text-1">{shown}</span> of {total}
+        </span>
+        {status !== 'all' && (
+          <>
+            <span className="text-border-2" aria-hidden>
+              ·
+            </span>
+            <span>{STATUS_LABELS[status]}</span>
+          </>
+        )}
+      </p>
 
       {/* Date-added availability note */}
       {sort === 'added' && addedUnavailable && (

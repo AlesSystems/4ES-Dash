@@ -10,50 +10,73 @@
  */
 :root {
   /* Light is the default theme; the toggle (#21) sets data-theme='dark'.
-     color-scheme lives alongside the tokens (unlayered) so native UI matches. */
+     color-scheme lives alongside the tokens (unlayered) so native UI matches.
+     Palette: the warm editorial "Wrapped" system — paper-warm light, warm-ink dark.
+     See docs/design/project/wrapped.jsx and docs/DESIGN.md. */
   color-scheme: light;
 
-  --brand-500: #1b6feb;
-  --brand-600: #1559c2;
+  --brand-500: #b8541f; /* editorial brick accent */
+  --brand-600: #9c4419; /* hover */
+  --accent-2: #3e5562; /* deep slate, secondary accent */
+  --accent-ink: #fff8eb; /* text/icon on accent fills */
 
-  --bg: #fafafb;
-  --surface: #ffffff;
-  --surface-2: #f3f4f6;
-  --border: #e5e7eb;
+  --bg: #f4ede1; /* paper-warm */
+  --bg-grad: linear-gradient(180deg, #f7f0e4 0%, #f1eadd 100%);
+  --surface: #fdf8ed;
+  --surface-2: #f9f1e1;
+  --border: #e3d8c4;
+  --border-2: #cdc0a8;
 
-  --text-1: #0b1220;
-  --text-2: #3b4252;
-  --text-3: #6b7280;
+  --text-1: #1f1a14;
+  --text-2: #5a4f42;
+  --text-3: #8c7f6e;
 
-  --success: #2ebd6b;
-  --warning: #f5a524;
-  --danger: #e5484d;
+  --success: #2f7a34; /* forest green */
+  --warning: #b8541f;
+  --danger: #a8392c; /* muted red */
   --info: var(--brand-500);
 
-  --chart-1: #5b9dff;
-  --chart-2: #2ebd6b;
-  --chart-3: #f5a524;
-  --chart-4: #e5484d;
-  --chart-5: #a855f7;
-  --chart-6: #06b6d4;
-  --chart-7: #ec4899;
-  --chart-8: #84cc16;
+  --chart-1: #b8541f;
+  --chart-2: #3e5562;
+  --chart-3: #2f7a34;
+  --chart-4: #a8392c;
+  --chart-5: #8c6a3e;
+  --chart-6: #5a7d86;
+  --chart-7: #9c6b86;
+  --chart-8: #7a8246;
 }
 
 [data-theme='dark'] {
   color-scheme: dark;
 
-  --brand-500: #5b9dff;
-  --brand-600: #4488ee;
+  --brand-500: #e8a05c; /* warm amber accent */
+  --brand-600: #db8a40; /* hover */
+  --accent-2: #7e9ba8; /* muted slate, secondary accent */
+  --accent-ink: #1a120a; /* text/icon on accent fills */
 
-  --bg: #0e1116;
-  --surface: #161a22;
-  --surface-2: #1e232d;
-  --border: #262c38;
+  --bg: #141211; /* warm ink */
+  --bg-grad: linear-gradient(180deg, #181513 0%, #141211 100%);
+  --surface: #1c1816;
+  --surface-2: #221d1a;
+  --border: #2c2622;
+  --border-2: #3a322c;
 
-  --text-1: #e6eaf2;
-  --text-2: #a8b0bf;
-  --text-3: #7a8294;
+  --text-1: #f4ece2;
+  --text-2: #c8bdb0;
+  --text-3: #8b8278;
+
+  --success: #7fbf7a;
+  --warning: #e8a05c;
+  --danger: #e07b6a;
+
+  --chart-1: #e8a05c;
+  --chart-2: #7e9ba8;
+  --chart-3: #7fbf7a;
+  --chart-4: #e07b6a;
+  --chart-5: #c8a06a;
+  --chart-6: #8fb0bd;
+  --chart-7: #c79bb0;
+  --chart-8: #a8b06a;
 }
 
 @layer base {
