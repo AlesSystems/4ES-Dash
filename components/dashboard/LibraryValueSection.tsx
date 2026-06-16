@@ -1,0 +1,27 @@
+import { getLibraryValue } from '@/server/repositories/library-value';
+import { LibraryValueCard } from '@/components/dashboard/LibraryValueCard';
+
+/**
+ * Async server component for the dashboard library-value widget (#29).
+ *
+ * Summing the current store price of every owned game is many rate-limited
+ * Store API calls on a cold cache, so this is rendered inside its own
+ * `<Suspense>` boundary on the dashboard and streams in without blocking the
+ * rest of the page. It lives in its own module (not inline in app/page.tsx) so
+ * unit tests of the dashboard can mock it with a synchronous stub — async
+ * server components can't be rendered by @testing-library in jsdom.
+ */
+export async function LibraryValueSection(): Promise<JSX.Element> {
+  const value = await getLibraryValue();
+  return <LibraryValueCard value={value} />;
+}
+
+export function LibraryValueSkeleton(): JSX.Element {
+  return (
+    <section className="rounded-lg border border-border bg-surface p-6" aria-busy="true">
+      <div className="h-3 w-24 animate-pulse rounded bg-surface-2" />
+      <div className="mt-4 h-16 w-40 animate-pulse rounded bg-surface-2" />
+      <div className="mt-4 h-3 w-full animate-pulse rounded bg-surface-2" />
+    </section>
+  );
+}

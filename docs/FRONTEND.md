@@ -63,7 +63,15 @@ app/
 
 - Budget per route: < 200 KB JS gzipped, LCP < 2.5 s on a Moto G4-equivalent.
 - Use `next/dynamic` with `ssr: false` only when the component truly needs the DOM.
-- Charts are heavy — lazy-load them below the fold.
+- Charts are heavy — lazy-load them below the fold. Pattern (see the `/history` time-series chart,
+  `components/history/PlaytimeChart.tsx`): a `'use client'` wrapper does `next/dynamic(() =>
+  import('@tremor/react').then((m) => m.BarChart), { ssr: false, loading: <skeleton/> })` so Tremor +
+  recharts land in a separate client chunk, not the page's initial bundle. Tailwind is configured for
+  Tremor in `tailwind.config.ts` (tremor tokens mapped to our warm CSS vars + a series-color safelist).
+- Slow server widgets stream in their own `<Suspense>` boundary so they never block the page (see the
+  dashboard library-value card, `components/dashboard/LibraryValueSection.tsx`). Keep async server
+  components in their own module so dashboard unit tests can mock them with a sync stub — @testing-library
+  can't render an async component in jsdom (ERR-0006).
 - Images: always `next/image`, always with `sizes`.
 - Fonts: `next/font` with `display: swap`.
 

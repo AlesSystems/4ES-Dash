@@ -20,6 +20,7 @@ Rules:
 | ERR-0003 | 2026-06-16 | frontend | Medium | Dashboard cold load ~38s — achievement summary fans out 3 Steam calls across the entire library | Fixed |
 | ERR-0004 | 2026-06-16 | db | Low | Prisma 7 breaking changes + SQLite-migrations can't replay on Postgres (`migrate deploy` acceptance) | Won't-fix |
 | ERR-0005 | 2026-06-16 | jobs | Medium | `createMany({ skipDuplicates })` unsupported on SQLite — snapshot idempotency needed a different write | Fixed |
+| ERR-0006 | 2026-06-17 | frontend | Low | Async server component inside the dashboard tree broke `@testing-library` jsdom render | Fixed |
 
 **Allowed values**
 
@@ -163,6 +164,27 @@ Copy this block when adding a new entry. Replace every placeholder including the
 **Where else this assumption may be wrong:** Any future bulk-write path (achievement backfills, friend snapshots, reference-table seeding) that reaches for `createMany({ skipDuplicates })`, plus case-insensitive `mode: 'insensitive'` filters (also Postgres-only) — both will pass on a Postgres-only assumption and fail on SQLite dev/CI.
 
 **Prevented by:** The SQLite-first dev/CI gate (ERR-0004) actually catches this class of bug before prod; treat "works on Postgres" as unproven until the SQLite test suite is green.
+
+---
+
+### ERR-0006 — Async server component in the dashboard tree broke jsdom tests
+
+**Date:** 2026-06-17
+**Module:** frontend
+**Severity:** Low
+**Status:** Fixed
+
+**Symptom:** After adding the library-value widget (#29) to the dashboard as an inline `async function LibraryValueSection()` wrapped in `<Suspense>`, the existing homepage tests (`tests/integration/homepage.test.tsx`, `homepage-stale.test.tsx`) failed with `Objects are not valid as a React child (found: [object Promise])`.
+
+**Root cause:** Those tests render the dashboard with `render(await HomePage())` under `@testing-library/react` in jsdom. `@testing-library` uses the standard react-dom renderer, which does NOT understand async function components — it calls the component, gets a Promise back, and tries to render the Promise as a child. Only the React Server Components renderer awaits async components; jsdom unit tests don't have it.
+
+**Fix:** Extracted the async component into its own module (`components/dashboard/LibraryValueSection.tsx`) so the dashboard tests can `vi.mock` it with a synchronous stub. Production keeps the real streaming Suspense boundary (non-blocking cold load). The two homepage tests now stub `LibraryValueSection`/`LibraryValueSkeleton`.
+
+**Generalized rule:** Async server components can't be rendered by `@testing-library` in jsdom. Keep any async server component that sits inside a unit-tested page in its OWN module (never inline in the page) so tests can mock it with a sync stub; test the async component's data logic separately at the repository/function level. Reserve `render(await Page())` for trees whose children are all synchronous.
+
+**Where else this assumption may be wrong:** Any future page that composes an inline `async` child and is also unit-tested — e.g. streaming friends-activity, achievements timelines, or year-in-review sections. The same extraction pattern applies.
+
+**Prevented by:** A convention (now in docs/FRONTEND.md): async server components used by a tested page live in their own file. Caught here by the orchestrator's full-suite gate, which the parallel sub-agents' per-file test runs did not exercise.
 
 ---
 

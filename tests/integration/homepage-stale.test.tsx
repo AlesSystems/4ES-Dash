@@ -2,6 +2,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
+// The library-value widget is an async server component (streams in a Suspense
+// boundary) — stub it so @testing-library can render the dashboard tree in jsdom.
+vi.mock('@/components/dashboard/LibraryValueSection', () => ({
+  LibraryValueSection: () => null,
+  LibraryValueSkeleton: () => null,
+}));
+
 // When the cache serves stale data (its SWR path is unit-tested in cache.test.ts),
 // getProfile reports `stale: true`; assert the homepage surfaces the indicator.
 vi.mock('@/server/repositories/profile', () => ({

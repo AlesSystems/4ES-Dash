@@ -1,4 +1,6 @@
+import { Suspense } from 'react';
 import { topGamesByPlaytime } from '@/lib/games/select';
+import { oldestUnplayed } from '@/lib/games/backlog';
 import { accountAgeYears } from '@/lib/format/account';
 import { isSteamApiError } from '@/lib/steam/errors';
 import { ProfileStrip } from '@/components/dashboard/ProfileStrip';
@@ -6,6 +8,10 @@ import { KpiRow } from '@/components/dashboard/KpiRow';
 import { RecentlyPlayed } from '@/components/dashboard/RecentlyPlayed';
 import { TopGames } from '@/components/dashboard/TopGames';
 import { BacklogCard } from '@/components/dashboard/BacklogCard';
+import {
+  LibraryValueSection,
+  LibraryValueSkeleton,
+} from '@/components/dashboard/LibraryValueSection';
 import { AchievementSummary } from '@/components/dashboard/AchievementSummary';
 import { EmptyState } from '@/components/states/EmptyState';
 import { StaleBanner } from '@/components/states/StaleBanner';
@@ -13,6 +19,7 @@ import { getProfile } from '@/server/repositories/profile';
 import { getLevel } from '@/server/repositories/level';
 import { getRecentlyPlayed } from '@/server/repositories/recently-played';
 import { getAchievementProgress } from '@/server/repositories/achievements';
+import { getFirstSeenDates } from '@/server/repositories/snapshots';
 
 // The dashboard reads env + live Steam data per request — never prerender it at build.
 export const dynamic = 'force-dynamic';
@@ -55,10 +62,13 @@ export default async function HomePage() {
     ACHIEVEMENT_SUMMARY_GAME_LIMIT,
   ).map((g) => g.appId);
 
-  const [level, recent, achievements] = await Promise.all([
+  const [level, recent, achievements, firstSeen] = await Promise.all([
     getLevel().catch(() => ({ level: null, stale: false })),
     getRecentlyPlayed(),
     getAchievementProgress(achievementAppIds),
+    // Inferred acquiredAt for the backlog's "oldest unplayed" (#28). Degrades to
+    // no dates if the snapshot table is empty or unreadable — never blocks.
+    getFirstSeenDates().catch(() => new Map<number, string>()),
   ]);
 
   const topGames = topGamesByPlaytime(games, 5).map((g) => ({
@@ -70,6 +80,13 @@ export default async function HomePage() {
   const untouchedCount = games.filter((g) => g.playtime.total === 0).length;
   const achievementPercent = achievements.available ? achievements.data.percent : null;
   const stale = profileStale || recent.stale;
+
+  // Oldest unplayed game by inferred acquiredAt (#28).
+  const gamesWithAcquisition = games.map((g) => ({
+    ...g,
+    acquiredAt: firstSeen.get(g.appId) ?? null,
+  }));
+  const oldestUnplayedGame = oldestUnplayed(gamesWithAcquisition);
 
   return (
     <main className={SHELL}>
@@ -101,7 +118,14 @@ export default async function HomePage() {
           <TopGames games={topGames} />
         </section>
         <div className="flex flex-col gap-6">
-          <BacklogCard untouchedCount={untouchedCount} librarySize={games.length} />
+          <BacklogCard
+            untouchedCount={untouchedCount}
+            librarySize={games.length}
+            oldestUnplayed={oldestUnplayedGame}
+          />
+          <Suspense fallback={<LibraryValueSkeleton />}>
+            <LibraryValueSection />
+          </Suspense>
           <AchievementSummary result={achievements} />
         </div>
       </div>

@@ -1,7 +1,16 @@
 // @vitest-environment jsdom
 import { http, HttpResponse } from 'msw';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+
+// The library-value widget is an async server component that streams in its own
+// Suspense boundary — @testing-library can't render async components in jsdom.
+// Stub it with a sync no-op; its own behavior is covered by library-value tests.
+vi.mock('@/components/dashboard/LibraryValueSection', () => ({
+  LibraryValueSection: () => null,
+  LibraryValueSkeleton: () => null,
+}));
+
 import HomePage from '@/app/page';
 import { clearCache } from '@/server/cache';
 import { steamServer } from '../mocks/steam-server';
