@@ -120,11 +120,11 @@ These gates apply to every PR regardless of phase. A task is not done until all 
 
 **Goal:** trends over time, not just snapshots.
 
-- [ ] **SQLite (dev) / Postgres (prod) via Prisma**
-  - `pnpm prisma migrate dev` on a clean SQLite file succeeds without errors.
-  - `pnpm prisma migrate deploy` against a Postgres connection string (provided via `DATABASE_URL`) succeeds without errors.
-  - All migrations in `prisma/migrations/` are immutable — no existing migration file is modified after it has been committed to `main`.
-  - `server/db.ts` exports a single Prisma client instance; no other file instantiates `new PrismaClient()`.
+- [x] **SQLite (dev) / Postgres (prod) via Prisma** *(#24)*
+  - [x] `pnpm prisma migrate dev` on a clean SQLite file succeeds without errors.
+  - [~] ~~`pnpm prisma migrate deploy` against a Postgres connection string~~ — **re-scoped to `prisma db push`** for prod Postgres; SQLite-authored migrations don't replay on Postgres. See `docs/ERROR.md` (ERR-0004) and `docs/DEPLOYMENT.md`.
+  - [x] All migrations in `prisma/migrations/` are immutable — no existing migration file is modified after it has been committed to `main`.
+  - [x] `server/db.ts` exports a single Prisma client instance; no other file instantiates `new PrismaClient()`.
 
 - [ ] **Nightly snapshot job (playtime + achievement state)**
   - `POST /api/cron/snapshot` with the correct `x-cron-secret` header triggers the job and returns HTTP 200.

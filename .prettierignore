@@ -8,3 +8,6 @@ coverage
 .github
 *.yml
 *.yaml
+
+# generated/immutable Prisma migration SQL — never reformat
+prisma/migrations

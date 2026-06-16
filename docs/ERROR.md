@@ -18,6 +18,7 @@ Rules:
 | ERR-0001 | 2026-06-14 | docs | Low | docs/ERROR.md not created during bootstrap | Fixed |
 | ERR-0002 | 2026-06-16 | steam-client | High | GetPlayerAchievements 403 mislabeled "Steam API key rejected", crashing the dashboard | Fixed |
 | ERR-0003 | 2026-06-16 | frontend | Medium | Dashboard cold load ~38s — achievement summary fans out 3 Steam calls across the entire library | Fixed |
+| ERR-0004 | 2026-06-16 | db | Low | Prisma 7 breaking changes + SQLite-migrations can't replay on Postgres (`migrate deploy` acceptance) | Won't-fix |
 
 **Allowed values**
 
@@ -119,6 +120,27 @@ Copy this block when adding a new entry. Replace every placeholder including the
 **Where else this assumption may be wrong:** Any future RSC that loops over the whole library through `lib/steam` on the request path — e.g. a "rarest achievements across all games" view, per-game store-price aggregation, or a friends-activity feed. The durable fix is Phase 2 DB snapshots + a cron pre-warm so the request path reads pre-computed data instead of fanning out live.
 
 **Prevented by:** A per-route performance budget check (LCP / server render time) in review, and treating "N× a rate-limited call on first paint" as a design smell that must be bounded or moved to a background job.
+
+---
+
+### ERR-0004 — Prisma 7 breaking changes + SQLite migrations can't replay on Postgres
+
+**Date:** 2026-06-16
+**Module:** db
+**Severity:** Low
+**Status:** Won't-fix (deliberate, documented deferral)
+
+**Symptom:** Two coupled issues surfaced while bootstrapping persistence (Phase 2, #24): (1) `pnpm add prisma@latest` installed Prisma **7.8.0**, whose `prisma-client-js` generator is deprecated in favour of a new `prisma-client` generator that requires a custom `output` path and mandatory driver adapters — a large, risky change for a foundational PR. (2) `docs/ACCEPTANCE.md` asks that both `prisma migrate dev` (SQLite) **and** `prisma migrate deploy` against Postgres succeed, but a single committed migration history is engine-specific — SQLite-authored migration SQL will not replay on Postgres.
+
+**Root cause:** Prisma migrations are authored against one datasource provider; the DDL they emit (and the `migration_lock.toml` provider) is engine-specific. There is no free, single-history way to serve both SQLite (dev/CI) and Postgres (prod). Independently, "always use latest" is wrong for a foundation dependency where a new major's breaking changes outweigh its benefits.
+
+**Fix:** (1) **Pinned Prisma to `^6.19.3`** (`prisma-client-js`, client in `node_modules`, `binaryTargets` for Vercel) — the well-trodden path the data model already assumed. (2) Adopted **SQLite for dev/CI with committed migrations**, and **Postgres prod via `prisma db push`** (schema-driven sync, no replay), documented in `docs/DEPLOYMENT.md` and `docs/DATA_MODEL.md`. The schema is kept Postgres-compatible (no SQLite-only types; JSON as `String`). The acceptance line "`migrate deploy` against Postgres" is consciously **re-scoped** to `db push`; a dual Postgres migration history is deferred to a later phase.
+
+**Generalized rule:** Pin foundational dependencies to a stable major and only adopt a new major deliberately, after weighing its breaking changes — "latest" is a default for app-level models, not for the DB layer everything builds on. And a migration history belongs to exactly one database engine; if dev and prod engines differ, either keep two histories or use `db push` for the engine without a committed history — never assume one history replays on both.
+
+**Where else this assumption may be wrong:** Any future doc/CI that assumes `migrate deploy` works against prod Postgres; the Docker target in `docs/DEPLOYMENT.md` (Postgres) also uses `migrate deploy` today and should move to `db push` or gain a Postgres migration history before it is exercised. A later Prisma 7 upgrade must revisit the `server/db.ts` import path and add a driver adapter.
+
+**Prevented by:** Reading the installed major's upgrade guide before building on it (caught here via Context7), and treating any acceptance criterion that spans two database engines as a flag to choose the migration strategy explicitly up front.
 
 ---
 

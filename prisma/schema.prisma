@@ -1,0 +1,113 @@
+// 4ES-Dash persistence layer. See docs/DATA_MODEL.md for the reasoning.
+//
+// Provider is SQLite for dev/CI; production uses Postgres via `prisma db push`
+// (schema-driven, no migration replay) — see docs/DEPLOYMENT.md. Committed
+// migrations are SQLite-authored and immutable once merged.
+
+generator client {
+  provider = "prisma-client-js"
+  // "native" for local dev/CI; the rhel target is the Vercel serverless runtime.
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "sqlite" // postgres in prod via `db push`; see docs/DEPLOYMENT.md
+  url      = env("DATABASE_URL")
+}
+
+// ─── Reference tables (upserted on read-through) ───────────────────────────
+
+model User {
+  steamId      String   @id // 17-digit string, 64-bit Steam ID
+  personaName  String
+  avatarUrl    String
+  countryCode  String?
+  createdAt    DateTime
+  firstSeenAt  DateTime @default(now())
+  lastSyncedAt DateTime @default(now())
+
+  ownedGames           OwnedGame[]
+  playtimeSnapshots    PlaytimeSnapshot[]
+  achievementSnapshots AchievementSnapshot[]
+}
+
+model Game {
+  appId       Int       @id
+  name        String
+  iconUrl     String?
+  headerUrl   String?
+  releaseDate DateTime?
+  genres      String    // JSON-encoded array; expand to a join if we need to query by genre
+  hasStats    Boolean   @default(false)
+  refreshedAt DateTime  @default(now())
+
+  owners       OwnedGame[]
+  achievements Achievement[]
+}
+
+model OwnedGame {
+  steamId          String
+  appId            Int
+  acquiredAt       DateTime? // NOT returned by GetOwnedGames; inferred from first snapshot only
+  playtimeForever  Int       // minutes
+  playtimeTwoWeeks Int       // minutes, snapshot of "last 2 weeks"
+  lastPlayedAt     DateTime?
+  refreshedAt      DateTime  @default(now())
+
+  user User @relation(fields: [steamId], references: [steamId])
+  game Game @relation(fields: [appId], references: [appId])
+
+  @@id([steamId, appId])
+  @@index([steamId, playtimeForever])
+}
+
+model Achievement {
+  appId               Int
+  apiName             String
+  displayName         String
+  description         String?
+  iconUrl             String?
+  iconGrayUrl         String?
+  globalUnlockPercent Float?
+
+  game Game @relation(fields: [appId], references: [appId])
+
+  @@id([appId, apiName])
+}
+
+// ─── Snapshot tables (append-only, day-keyed) ──────────────────────────────
+
+model PlaytimeSnapshot {
+  steamId         String
+  appId           Int
+  date            DateTime // truncated to day, UTC
+  playtimeForever Int      // minutes, monotonic
+
+  user User @relation(fields: [steamId], references: [steamId])
+
+  @@id([steamId, appId, date])
+  @@index([steamId, date])
+}
+
+model AchievementSnapshot {
+  steamId       String
+  appId         Int
+  date          DateTime
+  unlockedCount Int
+
+  user User @relation(fields: [steamId], references: [steamId])
+
+  @@id([steamId, appId, date])
+}
+
+// ─── Observability ─────────────────────────────────────────────────────────
+
+model JobRun {
+  id         String    @id @default(cuid())
+  name       String
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  status     String    // queued | running | ok | error
+  error      String?
+  payload    String?   // JSON
+}
