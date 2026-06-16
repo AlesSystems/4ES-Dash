@@ -97,6 +97,8 @@ export async function runSnapshot(): Promise<SnapshotResult> {
     const priorMaxByApp = await prismaPriorMax(steamId, dayKey);
 
     // Which apps already have a row for today (so re-runs report 0 inserted).
+    // This drives the `rowsInserted` count only — it is best-effort reporting,
+    // not the idempotency mechanism (that is the upsert's compound PK below).
     const existingToday = await prisma.playtimeSnapshot.findMany({
       where: { steamId, date: dayKey },
       select: { appId: true },
