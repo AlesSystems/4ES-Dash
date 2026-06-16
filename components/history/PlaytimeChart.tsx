@@ -54,9 +54,15 @@ interface PlaytimeChartProps {
 // Component
 // ---------------------------------------------------------------------------
 
-export function PlaytimeChart({ points }: PlaytimeChartProps) {
+export function PlaytimeChart({ points, bucket }: PlaytimeChartProps) {
+  const unitLabel = bucket === 'week' ? 'week' : 'month';
   return (
-    <div className="rounded-lg border border-border bg-surface p-5">
+    <div
+      className="rounded-lg border border-border bg-surface p-5"
+      role="img"
+      aria-label={`Playtime in minutes per ${unitLabel}`}
+    >
+      <p className="text-caption text-text-3 mb-3">Minutes played per {unitLabel}</p>
       <LazyBarChart
         data={points}
         index="period"

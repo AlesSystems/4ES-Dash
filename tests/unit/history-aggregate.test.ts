@@ -225,3 +225,24 @@ describe('aggregatePlaytime — output ordering', () => {
     expect(result.map((p) => p.period)).toEqual(['2026-01', '2026-02', '2026-03']);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Zero-fill across an ISO W53 year boundary (2020 is a 53-week ISO year)
+// ---------------------------------------------------------------------------
+
+describe('aggregatePlaytime — zero-fill across a W53 boundary', () => {
+  it('fills the empty 2020-W53 week between 2020-W52 and 2021-W01', () => {
+    const rows = [
+      // 2020-W52 (Mon 2020-12-21 .. Sun 2020-12-27): two snapshots → delta 60
+      row(1, '2020-12-21T00:00:00.000Z', 100),
+      row(1, '2020-12-24T00:00:00.000Z', 160),
+      // gap: 2020-W53 (Mon 2020-12-28 .. Sun 2021-01-03) has no snapshots
+      // 2021-W01 (Mon 2021-01-04 ..): two snapshots → delta 60
+      row(1, '2021-01-04T00:00:00.000Z', 200),
+      row(1, '2021-01-07T00:00:00.000Z', 260),
+    ];
+    const result = aggregatePlaytime(rows, 'week');
+    expect(result.map((p) => p.period)).toEqual(['2020-W52', '2020-W53', '2021-W01']);
+    expect(result.map((p) => p.minutes)).toEqual([60, 0, 60]);
+  });
+});

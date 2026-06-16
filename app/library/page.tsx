@@ -38,7 +38,9 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
     stale = data.stale;
     // Merge snapshot-inferred acquiredAt (#26) so sort=added lights up for games
     // seen since tracking began. getProfile is cached, so this adds one DB query.
-    const firstSeen = await getFirstSeenDates();
+    // Degrade to no dates on a DB hiccup — the library still renders (matches the
+    // dashboard; a missing-history read must never crash the page).
+    const firstSeen = await getFirstSeenDates().catch(() => new Map<number, string>());
     games = data.games.map((g) => ({ ...g, acquiredAt: firstSeen.get(g.appId) ?? null }));
   } catch (error) {
     if (isSteamApiError(error) && error.kind === 'private') {

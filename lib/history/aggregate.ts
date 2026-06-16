@@ -56,8 +56,9 @@ function isoWeek(date: Date): { year: number; week: number } {
   const jan4Dow = (jan4.getUTCDay() + 6) % 7;
   const week1Monday = new Date(jan4.getTime() - jan4Dow * 24 * 60 * 60 * 1000);
 
-  // Week number = 1 + whole weeks elapsed since week 1's Monday.
-  const weekNum = 1 + Math.round((d.getTime() - week1Monday.getTime()) / (7 * 24 * 60 * 60 * 1000));
+  // Week number = 1 + whole weeks elapsed since week 1's Monday. `d` is this
+  // week's Thursday, so the offset is exactly (3 + 7·N) days → floor gives N.
+  const weekNum = 1 + Math.floor((d.getTime() - week1Monday.getTime()) / (7 * 24 * 60 * 60 * 1000));
 
   return { year: isoYear, week: weekNum };
 }
