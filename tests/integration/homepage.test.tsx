@@ -20,12 +20,12 @@ beforeEach(() => clearCache());
 describe('HomePage', () => {
   it('renders the dashboard widgets and top games on the happy path', async () => {
     await renderHome();
-    // Recently-played widget + top-games section both render.
+    // Recently-played widget + most-played (top games) section both render.
     expect(screen.getByRole('heading', { name: /recently played/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /top games by playtime/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /most played/i })).toBeInTheDocument();
     // Achievement aggregate resolved (not the unavailable empty state).
     expect(screen.getByText(/achievement completion/i)).toBeInTheDocument();
-    // The 2-game fixture appears in the top-games grid.
+    // The 2-game fixture appears in the most-played ranking.
     expect(screen.getAllByText('Counter-Strike 2').length).toBeGreaterThanOrEqual(1);
   });
 

@@ -1,31 +1,47 @@
 import { topGamesByPlaytime } from '@/lib/games/select';
 import { isSteamApiError } from '@/lib/steam/errors';
-import { GameTile } from '@/components/games/GameTile';
+import { ProfileStrip } from '@/components/dashboard/ProfileStrip';
+import { KpiRow } from '@/components/dashboard/KpiRow';
 import { RecentlyPlayed } from '@/components/dashboard/RecentlyPlayed';
+import { TopGames } from '@/components/dashboard/TopGames';
+import { BacklogCard } from '@/components/dashboard/BacklogCard';
 import { AchievementSummary } from '@/components/dashboard/AchievementSummary';
 import { EmptyState } from '@/components/states/EmptyState';
 import { StaleBanner } from '@/components/states/StaleBanner';
 import { getProfile } from '@/server/repositories/profile';
+import { getLevel } from '@/server/repositories/level';
 import { getRecentlyPlayed } from '@/server/repositories/recently-played';
 import { getAchievementProgress } from '@/server/repositories/achievements';
 
 // The dashboard reads env + live Steam data per request — never prerender it at build.
 export const dynamic = 'force-dynamic';
 
-const SHELL = 'mx-auto max-w-content px-4 py-8 sm:px-6 lg:px-8';
+const SHELL = 'px-4 py-8 sm:px-6 lg:px-10';
+
+/** Whole years since a Steam account was created, or null when unknown. */
+function accountAgeYears(createdAt: string | null): number | null {
+  if (createdAt === null) return null;
+  const created = new Date(createdAt).getTime();
+  if (Number.isNaN(created)) return null;
+  const years = Math.floor((Date.now() - created) / (365.25 * 24 * 60 * 60 * 1000));
+  return years >= 0 ? years : null;
+}
 
 export default async function HomePage() {
   // Profile gates the page: a private library degrades to a designed empty state.
+  let profile;
   let games;
   let profileStale = false;
   try {
     const data = await getProfile();
+    profile = data.profile;
     games = data.games;
     profileStale = data.stale;
   } catch (error) {
     if (isSteamApiError(error) && error.kind === 'private') {
       return (
         <main className={SHELL}>
+          <h1 className="sr-only">Dashboard</h1>
           <EmptyState
             title="Profile is private"
             description="Make your Steam profile and game details public to see your library here."
@@ -47,49 +63,56 @@ export default async function HomePage() {
     ACHIEVEMENT_SUMMARY_GAME_LIMIT,
   ).map((g) => g.appId);
 
-  const [recent, achievements] = await Promise.all([
+  const [level, recent, achievements] = await Promise.all([
+    getLevel().catch(() => ({ level: null, stale: false })),
     getRecentlyPlayed(),
     getAchievementProgress(achievementAppIds),
   ]);
 
-  const topGames = topGamesByPlaytime(games, 10);
+  const topGames = topGamesByPlaytime(games, 5).map((g) => ({
+    appId: g.appId,
+    name: g.name,
+    playtimeMinutes: g.playtime.total,
+  }));
+  const totalPlaytimeMinutes = games.reduce((sum, g) => sum + g.playtime.total, 0);
+  const untouchedCount = games.filter((g) => g.playtime.total === 0).length;
+  const achievementPercent = achievements.available ? achievements.data.percent : null;
   const stale = profileStale || recent.stale;
 
   return (
-    <main className={`${SHELL} space-y-10`}>
-      <h1 className="sr-only">Dashboard</h1>
-      {stale ? <StaleBanner /> : null}
+    <main className={SHELL}>
+      <ProfileStrip
+        personaName={profile.personaName}
+        avatarUrl={profile.avatar.full}
+        level={level.level}
+        accountAgeYears={accountAgeYears(profile.createdAt)}
+        gamesCount={games.length}
+        totalPlaytimeMinutes={totalPlaytimeMinutes}
+        recentlyPlayedCount={recent.games.length}
+      />
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-        <section className="lg:col-span-2">
-          <RecentlyPlayed games={recent.games} stale={recent.stale} />
-        </section>
-        <section>
-          <AchievementSummary result={achievements} />
-        </section>
+      {stale ? <StaleBanner className="mb-6" /> : null}
+
+      <KpiRow
+        totalPlaytimeMinutes={totalPlaytimeMinutes}
+        librarySize={games.length}
+        recentlyPlayedCount={recent.games.length}
+        achievementPercent={achievementPercent}
+      />
+
+      <div className="mb-8">
+        <RecentlyPlayed games={recent.games} stale={recent.stale} />
       </div>
 
-      <section>
-        <h2 className="mb-4 text-h3 font-semibold text-text-1">Top games by playtime</h2>
-        {topGames.length === 0 ? (
-          <EmptyState
-            title="No games yet"
-            description="This library doesn't have any games to show."
-          />
-        ) : (
-          <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-            {topGames.map((game) => (
-              <li key={game.appId}>
-                <GameTile
-                  name={game.name}
-                  headerUrl={game.headerUrl}
-                  playtimeMinutes={game.playtime.total}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <section className="lg:col-span-2">
+          <TopGames games={topGames} />
+        </section>
+        <div className="flex flex-col gap-6">
+          <BacklogCard untouchedCount={untouchedCount} librarySize={games.length} />
+          <AchievementSummary result={achievements} />
+        </div>
+      </div>
     </main>
   );
 }

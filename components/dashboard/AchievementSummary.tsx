@@ -17,7 +17,7 @@ export function AchievementSummary({ result }: AchievementSummaryProps): JSX.Ele
   if (!result.available) {
     return (
       <section aria-label="Achievement progress">
-        <h2 className="mb-4 text-h2 font-semibold text-text-1">Achievements</h2>
+        <h2 className="mb-4 font-serif text-h2 text-text-1">Achievements</h2>
         <EmptyState
           title="No achievement data yet"
           description="Play games with achievements to see your progress."
@@ -30,13 +30,13 @@ export function AchievementSummary({ result }: AchievementSummaryProps): JSX.Ele
 
   return (
     <section aria-label="Achievement progress">
-      <h2 className="mb-4 text-h2 font-semibold text-text-1">Achievements</h2>
+      <h2 className="mb-4 font-serif text-h2 text-text-1">Achievements</h2>
 
       {/* Overall completion */}
       <div className="mb-6 rounded-lg border border-border bg-surface p-4 sm:p-6">
         <div className="mb-2 flex items-baseline gap-2">
           <span
-            className="text-display font-bold tabular-nums text-text-1"
+            className="font-serif text-display tabular-nums text-text-1"
             aria-label={`${percent}% achievement completion`}
           >
             {percent}%
@@ -66,7 +66,7 @@ export function AchievementSummary({ result }: AchievementSummaryProps): JSX.Ele
 
       {/* Recent unlocks */}
       <div>
-        <h3 className="mb-3 text-h3 font-semibold text-text-1">Recent unlocks</h3>
+        <h3 className="mb-3 font-serif text-h3 font-medium text-text-1">Recent unlocks</h3>
 
         {recentUnlocks.length === 0 ? (
           <p className="text-body text-text-3">No unlocks in the last 7 days</p>
