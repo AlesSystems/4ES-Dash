@@ -36,8 +36,16 @@ export default async function HomePage() {
     throw error; // anything else is surfaced by app/error.tsx
   }
 
-  // Achievement aggregate runs over owned games that expose achievements.
-  const achievementAppIds = games.filter((g) => g.hasAchievements).map((g) => g.appId);
+  // Achievement aggregate runs over the most-played games that expose
+  // achievements — not the whole library. Each game costs up to 3 rate-limited
+  // Steam calls (≈250 ms each), so aggregating all of them blows the dashboard's
+  // load budget (~38 s cold for a 50-game library). Bounding to the top N keeps
+  // the glanceable summary fast; the cache warms over time. See ERR-0003.
+  const ACHIEVEMENT_SUMMARY_GAME_LIMIT = 20;
+  const achievementAppIds = topGamesByPlaytime(
+    games.filter((g) => g.hasAchievements),
+    ACHIEVEMENT_SUMMARY_GAME_LIMIT,
+  ).map((g) => g.appId);
 
   const [recent, achievements] = await Promise.all([
     getRecentlyPlayed(),

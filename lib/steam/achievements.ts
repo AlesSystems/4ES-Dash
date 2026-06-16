@@ -18,7 +18,7 @@
 import { z } from 'zod';
 import { getEnv } from '@/server/env';
 import { Availability, available, unavailable } from '@/lib/result';
-import { SteamApiError } from './errors';
+import { isSteamApiError, SteamApiError } from './errors';
 import { steamLimiter } from './limiter';
 import { withRetry } from './retry';
 
@@ -206,7 +206,22 @@ export async function getPlayerAchievements(
 
   await steamLimiter.acquire();
 
-  const raw = await withRetry(() => fetchJson(url));
+  let raw: unknown;
+  try {
+    raw = await withRetry(() => fetchJson(url));
+  } catch (err) {
+    // GetPlayerAchievements is the one IPlayerService/ISteamUserStats endpoint
+    // that returns HTTP 403 — body {"playerstats":{"error":"Profile is not
+    // public","success":false}} — when the user's profile privacy is not Public,
+    // even though GetOwnedGames returns 200 for the same account. That 403 is a
+    // privacy condition, NOT a rejected API key: map it to the designed empty
+    // state so the dashboard degrades instead of crashing. A 401 (genuine bad or
+    // missing key) still throws as `auth`.
+    if (isSteamApiError(err) && err.kind === 'auth' && err.status === 403) {
+      return unavailable('private', 'Steam achievement data is not public');
+    }
+    throw err;
+  }
 
   let parsed: z.infer<typeof RawPlayerAchievements>;
   try {

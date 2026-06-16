@@ -43,26 +43,34 @@ export type { GameAchievements, LibrarySummary };
 export async function getGameAchievements(appId: number): Promise<Availability<GameAchievements>> {
   const { STEAM_ID } = getEnv();
 
-  // Fetch schema, global percentages, and player progress in parallel.
-  // All three are individually cached.
-  const [schemaResult, globalResult, playerResult] = await Promise.all([
+  // Fetch the per-user progress FIRST. When a game is private or has no
+  // achievements, there is no point spending two more rate-limited calls on its
+  // schema + global percentages — short-circuit and skip them. This cuts the
+  // dashboard's cold-load cost from 3 Steam calls/game to 1 for every
+  // unavailable game (a private library is ~38 s → ~13 s). See ERR-0003.
+  const playerResult = await cache(
+    cacheKey('player-achievements', STEAM_ID, appId),
+    TTL.playerAchievements,
+    () => getPlayerAchievements(STEAM_ID, appId),
+  );
+
+  const playerAvailability = playerResult.value;
+
+  // Pass through private / no-achievements degradation — no metadata needed.
+  if (!playerAvailability.available) {
+    return playerAvailability;
+  }
+
+  // Only games with real player data need schema (display names/icons) + global
+  // percentages. Both are per-game and cached under the 'global' pseudo-steamId.
+  const [schemaResult, globalResult] = await Promise.all([
     cache(cacheKey('achievement-schema', 'global', appId), TTL.playerAchievements, () =>
       getSchemaForGame(appId),
     ),
     cache(cacheKey('achievement-global', 'global', appId), TTL.playerAchievements, () =>
       getGlobalAchievementPercentages(appId),
     ),
-    cache(cacheKey('player-achievements', STEAM_ID, appId), TTL.playerAchievements, () =>
-      getPlayerAchievements(STEAM_ID, appId),
-    ),
   ]);
-
-  const playerAvailability = playerResult.value;
-
-  // Pass through private / no-achievements degradation.
-  if (!playerAvailability.available) {
-    return playerAvailability;
-  }
 
   const merged = mergeGameAchievements(
     playerAvailability.data,
@@ -70,8 +78,8 @@ export async function getGameAchievements(appId: number): Promise<Availability<G
     globalResult.value,
   );
 
-  // Surface staleness if any of the three cached fetches served an expired value
-  // after an upstream failure (stale-while-revalidate).
+  // Surface staleness if any cached fetch served an expired value after an
+  // upstream failure (stale-while-revalidate).
   const stale = playerAvailability.stale || schemaResult.stale || globalResult.stale;
   return available(merged, stale);
 }

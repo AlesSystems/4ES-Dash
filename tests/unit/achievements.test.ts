@@ -117,6 +117,35 @@ describe('getPlayerAchievements – private profile', () => {
 });
 
 // ---------------------------------------------------------------------------
+// getPlayerAchievements — 403 forbidden (live Steam privacy behavior, ERR-0xxx)
+// ---------------------------------------------------------------------------
+
+describe('getPlayerAchievements – HTTP 403 forbidden', () => {
+  it('returns unavailable("private") on 403 — Steam uses 403 for private achievement data, NOT a bad key', async () => {
+    // Live behavior: GetOwnedGames returns 200 while GetPlayerAchievements returns
+    // 403 {"playerstats":{"error":"Profile is not public","success":false}} when
+    // the profile privacy is not Public. This must degrade, not crash the page.
+    let callCount = 0;
+    steamServer.use(
+      http.get(PLAYER_ACHIEVEMENTS_URL, () => {
+        callCount++;
+        return HttpResponse.json(
+          { playerstats: { error: 'Profile is not public', success: false } },
+          { status: 403 },
+        );
+      }),
+    );
+
+    const result = await getPlayerAchievements(STEAM_ID, APP_ID);
+    expect(result.available).toBe(false);
+    if (result.available) return;
+    expect(result.reason).toBe('private');
+    // 403 is non-retryable — exactly one upstream call.
+    expect(callCount).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // getPlayerAchievements — no achievements
 // ---------------------------------------------------------------------------
 
