@@ -16,11 +16,12 @@ User ──< OwnedGame >── Game ──< Achievement
 ```prisma
 // prisma/schema.prisma
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"] // local/CI + Vercel serverless
 }
 
 datasource db {
-  provider = "sqlite" // postgres in prod
+  provider = "sqlite" // postgres in prod via `db push`; see docs/DEPLOYMENT.md
   url      = env("DATABASE_URL")
 }
 
@@ -136,6 +137,8 @@ model JobRun {
 - Migrations are written via `prisma migrate dev` and committed with the PR that needs them.
 - Once merged to `main`, migrations are immutable. To fix a mistake, write a follow-up migration.
 - Destructive migrations (DROP, type change) require an explicit note in the PR description and a backup step in the deploy runbook.
+- **Pinned to Prisma 6.x** (`prisma-client-js` generator). Prisma 7 mandates the new `prisma-client` generator with a required custom output path and driver adapters — deferred to keep the foundation low-risk. See `docs/ERROR.md` (ERR-0004).
+- **Committed migrations are SQLite-authored** (dev + CI). Production Postgres is provisioned with `prisma db push` (schema-driven, no migration replay), because a single SQLite migration history cannot replay on Postgres. The schema is kept Postgres-compatible (no SQLite-only types, JSON stored as `String`). See `docs/DEPLOYMENT.md`.
 
 ## Retention
 
