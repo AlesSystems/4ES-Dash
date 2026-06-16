@@ -23,9 +23,9 @@ export function LibraryEmpty({ total, query }: LibraryEmptyProps): JSX.Element {
       {/* Foreground stack */}
       <div className="relative z-10 max-w-lg">
         {/* Heading */}
-        <p className="font-serif text-display-md text-text-1">
+        <h2 className="font-serif text-display-md text-text-1">
           Nothing <span className="italic text-text-2">matches</span>.
-        </p>
+        </h2>
 
         {/* Body */}
         <p className="mt-3 font-serif text-h3 text-text-2 leading-relaxed">

@@ -35,9 +35,13 @@ export function LibraryHeader({
       {/* Stat line */}
       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-caption tabular-nums text-text-2">
         <span>{gamesCount.toLocaleString()} games</span>
-        <span className="text-border-2">·</span>
+        <span className="text-border-2" aria-hidden>
+          ·
+        </span>
         <span>{totalHours} hours</span>
-        <span className="text-border-2">·</span>
+        <span className="text-border-2" aria-hidden>
+          ·
+        </span>
         <span>{untouchedCount.toLocaleString()} unplayed</span>
       </div>
 

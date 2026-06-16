@@ -17,9 +17,11 @@ export function TopGames({ games }: TopGamesProps): JSX.Element {
         <h2 className="font-serif text-h2 text-text-1">
           Most played, <span className="italic">all time</span>
         </h2>
-        <p className="font-mono text-caption text-text-3 tabular-nums mt-1">
-          {sumHours} hours across the top {games.length}
-        </p>
+        {games.length > 0 && (
+          <p className="font-mono text-caption text-text-3 tabular-nums mt-1">
+            {sumHours} hours across the top {games.length}
+          </p>
+        )}
       </div>
 
       {games.length === 0 ? (
