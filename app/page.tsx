@@ -1,4 +1,5 @@
 import { topGamesByPlaytime } from '@/lib/games/select';
+import { accountAgeYears } from '@/lib/format/account';
 import { isSteamApiError } from '@/lib/steam/errors';
 import { ProfileStrip } from '@/components/dashboard/ProfileStrip';
 import { KpiRow } from '@/components/dashboard/KpiRow';
@@ -17,15 +18,6 @@ import { getAchievementProgress } from '@/server/repositories/achievements';
 export const dynamic = 'force-dynamic';
 
 const SHELL = 'px-4 py-8 sm:px-6 lg:px-10';
-
-/** Whole years since a Steam account was created, or null when unknown. */
-function accountAgeYears(createdAt: string | null): number | null {
-  if (createdAt === null) return null;
-  const created = new Date(createdAt).getTime();
-  if (Number.isNaN(created)) return null;
-  const years = Math.floor((Date.now() - created) / (365.25 * 24 * 60 * 60 * 1000));
-  return years >= 0 ? years : null;
-}
 
 export default async function HomePage() {
   // Profile gates the page: a private library degrades to a designed empty state.

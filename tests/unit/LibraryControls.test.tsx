@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { LibraryControls } from '@/components/library/LibraryControls';
 import { SORT_KEYS, SORT_LABELS } from '@/lib/games/sort';
@@ -77,5 +77,28 @@ describe('LibraryControls', () => {
   it('sort select has an accessible label', () => {
     render(<LibraryControls {...defaultProps} />);
     expect(screen.getByLabelText(/sort by/i)).toBeInTheDocument();
+  });
+
+  it('renders a status filter chip for each status', () => {
+    render(<LibraryControls {...defaultProps} />);
+    const group = screen.getByRole('group', { name: /filter by status/i });
+    expect(within(group).getByRole('button', { name: 'All' })).toBeInTheDocument();
+    expect(within(group).getByRole('button', { name: 'In progress' })).toBeInTheDocument();
+    expect(within(group).getByRole('button', { name: 'Untouched' })).toBeInTheDocument();
+  });
+
+  it('marks the active status chip as pressed', () => {
+    render(<LibraryControls {...defaultProps} status="untouched" />);
+    expect(screen.getByRole('button', { name: 'Untouched' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('renders grid and list view-mode buttons', () => {
+    render(<LibraryControls {...defaultProps} />);
+    expect(screen.getByRole('button', { name: /grid view/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /list view/i })).toBeInTheDocument();
   });
 });
