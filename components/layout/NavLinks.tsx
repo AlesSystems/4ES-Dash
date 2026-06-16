@@ -11,6 +11,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', href: '/' },
   { label: 'Library', href: '/library' },
+  { label: 'History', href: '/history' },
 ];
 
 export function NavLinks(): JSX.Element {

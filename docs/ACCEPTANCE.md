@@ -134,25 +134,25 @@ These gates apply to every PR regardless of phase. A task is not done until all 
   - [x] `playtimeForever` in a new snapshot is never less than the previous snapshot value; if Steam returns a lower number (a Steam-side correction), the job clamps to the previous value and logs a warning.
   - [x] The job processes all owned games within a single run; it does not require multiple invocations to complete. (Achievement-unlock snapshots are bounded to the top 20 played games — rate-limit cost; playtime covers the full library.)
 
-  > **#26 snapshot-inferred `acquiredAt`** — the read side (`getFirstSeenDates`, `getLibraryWithAcquisition` in `server/repositories/snapshots.ts`) lands here and is tested; its UI consumption (`sort=added` lighting up) is wired in the features PR (#27–#29).
+  > **#26 snapshot-inferred `acquiredAt`** — read side (`getFirstSeenDates`, `getLibraryWithAcquisition` in `server/repositories/snapshots.ts`) landed in the pipeline PR; UI consumption is wired in the features PR (`app/library/page.tsx` merges it so `sort=added` lights up; the dashboard backlog uses it for "oldest unplayed"). **Closed by #28's PR.**
 
-- [ ] **Time-series chart: playtime per week / month**
-  - The chart renders on `/history` (or equivalent) and shows playtime aggregated by ISO week or calendar month, selectable via a toggle.
-  - Weeks with zero playtime (no snapshot delta) are rendered as zero-height bars, not gaps.
-  - Tremor chart components are lazy-loaded (below the fold or via `next/dynamic`); they do not appear in the initial JS bundle for the page.
-  - The chart requires at least 2 snapshot data points to render; with fewer, an informational message ("Not enough history yet — check back tomorrow") is shown instead of an empty chart.
+- [x] **Time-series chart: playtime per week / month** *(#27)*
+  - [x] The chart renders on `/history` and shows playtime aggregated by ISO week or calendar month, selectable via a toggle.
+  - [x] Weeks with zero playtime (no snapshot delta) are rendered as zero-height bars, not gaps (continuous period range zero-filled in `lib/history/aggregate.ts`).
+  - [x] Tremor chart components are lazy-loaded via `next/dynamic` (`ssr:false`); they do not appear in the initial JS bundle (`/history` First Load JS ≈ baseline; Tremor/recharts in a separate chunk).
+  - [x] With < 2 snapshot data points an informational message ("Not enough history yet — check back tomorrow") is shown instead of an empty chart.
 
-- [ ] **Backlog score (unplayed games count, oldest unplayed)**
-  - The backlog score widget shows: total unplayed games (games where `playtimeForever === 0`), and the name + acquisition date of the oldest unplayed game (by `acquiredAt` where known, otherwise by first-seen snapshot date).
-  - **`acquiredAt` unavailable (T4):** if no acquisition date is known for any unplayed game, "Date unknown" is shown for the oldest unplayed game field; no crash.
-  - The count updates when new games are added (i.e. after the next snapshot run).
+- [x] **Backlog score (unplayed games count, oldest unplayed)** *(#28)*
+  - [x] Shows total unplayed games (`playtime.total === 0`) + name & acquisition date of the oldest unplayed (by `acquiredAt`, else first-seen snapshot date) via `lib/games/backlog.ts`.
+  - [x] **`acquiredAt` unavailable (T4):** "Date unknown" shown when no acquisition date is known; no crash.
+  - [x] The count reflects the live owned library; acquisition dates update as the snapshot job backfills them.
 
-- [ ] **Library value: sum of current store prices**
-  - The library value widget shows the total current store price of all owned games (sum of `price_overview.final` from the Store API, converted to the correct currency unit).
-  - Prices are cached for 1 hour per the Store API usage rules; the cache TTL is defined in `server/cache/ttl.ts`, not hardcoded in the widget.
-  - **Price paid unavailable (T4):** the widget explicitly notes "Based on current store prices — purchase prices are not available via Steam" adjacent to the total. No "vs. paid" comparison field is shown.
-  - **Store API unavailable (T2 degraded):** if the Store API is unreachable or returns an unexpected shape for a game, that game's price is treated as 0 and a note "Some prices unavailable" is shown. The widget does not crash or show NaN.
-  - Free-to-play games (price = 0) are counted in the library but do not inflate the total.
+- [x] **Library value: sum of current store prices** *(#29)*
+  - [x] Shows the total current store price of all owned games (sum of `price_overview.final`) in the correct currency unit (`server/repositories/library-value.ts`).
+  - [x] Prices cached 1 hour via `getGameStorePrice` (`TTL.storePrice` in `server/cache/ttl.ts`), not hardcoded in the widget.
+  - [x] **Price paid unavailable (T4):** the widget notes "Based on current store prices — purchase prices are not available via Steam"; no "vs. paid" field.
+  - [x] **Store API unavailable (T2 degraded):** an unavailable game's price is treated as 0 and "Some prices unavailable" is shown; never NaN/crash.
+  - [x] Free-to-play games (price = 0) are counted but do not inflate the total.
 
 ---
 

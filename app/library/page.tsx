@@ -10,6 +10,7 @@ import {
 } from '@/lib/games/sort';
 import { accountAgeYears } from '@/lib/format/account';
 import { getProfile } from '@/server/repositories/profile';
+import { getFirstSeenDates } from '@/server/repositories/snapshots';
 import { EmptyState } from '@/components/states/EmptyState';
 import { StaleBanner } from '@/components/states/StaleBanner';
 import { LibraryHeader } from '@/components/library/LibraryHeader';
@@ -28,14 +29,17 @@ interface LibraryPageProps {
 
 export default async function LibraryPage({ searchParams }: LibraryPageProps) {
   let profile;
-  let games;
+  let games: LibraryGame[];
   let stale = false;
 
   try {
     const data = await getProfile();
     profile = data.profile;
-    games = data.games;
     stale = data.stale;
+    // Merge snapshot-inferred acquiredAt (#26) so sort=added lights up for games
+    // seen since tracking began. getProfile is cached, so this adds one DB query.
+    const firstSeen = await getFirstSeenDates();
+    games = data.games.map((g) => ({ ...g, acquiredAt: firstSeen.get(g.appId) ?? null }));
   } catch (error) {
     if (isSteamApiError(error) && error.kind === 'private') {
       return (
@@ -59,9 +63,8 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
   const shown = sortGames(filterByStatus(filterGames(games, q), status), sort);
 
   // Show the inferred-date note whenever sort=added is active and ANY game still
-  // lacks an acquiredAt. In Phase 1 no game has a date yet, so this is always
-  // true; it stays correct once the snapshot job (Phase 2) backfills some dates.
-  const addedUnavailable = (games as LibraryGame[]).some((g) => (g.acquiredAt ?? null) === null);
+  // lacks an acquiredAt — games owned before snapshotting began stay null.
+  const addedUnavailable = games.some((g) => (g.acquiredAt ?? null) === null);
 
   const inProgressCount = games.filter((g) => g.playtime.total > 0).length;
   const untouchedCount = games.filter((g) => g.playtime.total === 0).length;
