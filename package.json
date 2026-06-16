@@ -58,6 +58,9 @@
     "vite-tsconfig-paths": "^5.0.1",
     "vitest": "^2.1.2"
   },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
   "pnpm": {
     "onlyBuiltDependencies": [
       "@prisma/client",

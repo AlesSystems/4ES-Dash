@@ -33,6 +33,7 @@
 | `steam-transient`        | 502  | Upstream 5xx after retries                    |
 | `validation`             | 400  | Request failed Zod validation                 |
 | `not-found`              | 404  | Resource not in cache/DB and Steam has no data|
+| `unauthorized`           | 401  | Missing/invalid `x-cron-secret` on a cron route|
 | `internal`               | 500  | Unhandled                                     |
 
 ## Endpoints
@@ -242,19 +243,33 @@ Aggregates for the dashboard hero.
 }
 ```
 
-### `POST /api/jobs/snapshot`
+### `POST /api/cron/snapshot`
 
-Cron-only. Snapshots playtime + achievements for the configured user.
+Cron-only. Snapshots playtime (and a bounded set of achievement-unlock counts) for the configured user. Idempotent — safe to retry; a second call on the same UTC day inserts no new rows.
 
 **Headers**
 
-- `x-cron-secret: <CRON_SECRET>` — required.
+- `x-cron-secret: <CRON_SECRET>` — required. Compared timing-safely; missing/invalid → `401 unauthorized`.
 
-**Response 202**
+**Response 200**
 
 ```json
-{ "queued": true, "jobId": "snap_2026_05_17_04_00" }
+{
+  "steamId": "76561198000000000",
+  "date": "2026-06-16",
+  "gamesProcessed": 65,
+  "rowsInserted": 65,
+  "clamped": 0,
+  "achievementRowsInserted": 20
+}
 ```
+
+**Errors**
+
+| `type` slug    | HTTP | When                                  |
+| -------------- | ---- | ------------------------------------- |
+| `unauthorized` | 401  | Missing/invalid `x-cron-secret`       |
+| `internal`     | 500  | The snapshot job threw (logged + `JobRun` row marked `error`) |
 
 ## Rate limits
 

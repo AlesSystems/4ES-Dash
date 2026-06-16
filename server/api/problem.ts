@@ -28,6 +28,8 @@ export const PROBLEM_CATALOG = {
   validation: { status: 400, title: 'Response validation failed' },
   // TODO(phase-0-§3): add 'not-found' (404) when /api routes can 404 on missing resources.
   'not-found': { status: 404, title: 'Resource not found' },
+  // Generic 401 for non-Steam auth — e.g. a cron route with a missing/invalid x-cron-secret.
+  unauthorized: { status: 401, title: 'Unauthorized' },
   internal: { status: 500, title: 'Internal server error' },
 } as const satisfies Record<string, { status: number; title: string }>;
 

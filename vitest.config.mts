@@ -9,6 +9,9 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     setupFiles: ['./tests/setup.ts'],
+    // Migrate the SQLite test DB once before any worker starts (integration tests
+    // open the real database — see tests/integration/snapshot.test.ts).
+    globalSetup: ['./tests/global-setup.ts'],
     include: ['tests/**/*.test.{ts,tsx}'],
   },
 });

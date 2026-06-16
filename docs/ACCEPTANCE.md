@@ -126,13 +126,15 @@ These gates apply to every PR regardless of phase. A task is not done until all 
   - [x] All migrations in `prisma/migrations/` are immutable — no existing migration file is modified after it has been committed to `main`.
   - [x] `server/db.ts` exports a single Prisma client instance; no other file instantiates `new PrismaClient()`.
 
-- [ ] **Nightly snapshot job (playtime + achievement state)**
-  - `POST /api/cron/snapshot` with the correct `x-cron-secret` header triggers the job and returns HTTP 200.
-  - `POST /api/cron/snapshot` without the header or with an incorrect header returns HTTP 401.
-  - The job is idempotent: calling it twice for the same calendar day inserts no duplicate rows — verified by running the route twice and asserting `SELECT COUNT(*)` on the snapshot table returns the same value both times.
-  - The job records a `(steamId, appId, date)` snapshot for every owned game; the `date` field is the UTC calendar day (not a timestamp).
-  - `playtimeForever` in a new snapshot is never less than the previous snapshot value; if Steam returns a lower number (a Steam-side correction), the job clamps to the previous value and logs a warning.
-  - The job processes all owned games within a single run; it does not require multiple invocations to complete.
+- [x] **Nightly snapshot job (playtime + achievement state)** *(#25)*
+  - [x] `POST /api/cron/snapshot` with the correct `x-cron-secret` header triggers the job and returns HTTP 200.
+  - [x] `POST /api/cron/snapshot` without the header or with an incorrect header returns HTTP 401.
+  - [x] The job is idempotent: calling it twice for the same calendar day inserts no duplicate rows — verified by running the route twice and asserting `SELECT COUNT(*)` on the snapshot table returns the same value both times.
+  - [x] The job records a `(steamId, appId, date)` snapshot for every owned game; the `date` field is the UTC calendar day (not a timestamp).
+  - [x] `playtimeForever` in a new snapshot is never less than the previous snapshot value; if Steam returns a lower number (a Steam-side correction), the job clamps to the previous value and logs a warning.
+  - [x] The job processes all owned games within a single run; it does not require multiple invocations to complete. (Achievement-unlock snapshots are bounded to the top 20 played games — rate-limit cost; playtime covers the full library.)
+
+  > **#26 snapshot-inferred `acquiredAt`** — the read side (`getFirstSeenDates`, `getLibraryWithAcquisition` in `server/repositories/snapshots.ts`) lands here and is tested; its UI consumption (`sort=added` lighting up) is wired in the features PR (#27–#29).
 
 - [ ] **Time-series chart: playtime per week / month**
   - The chart renders on `/history` (or equivalent) and shows playtime aggregated by ISO week or calendar month, selectable via a toggle.
@@ -252,3 +254,63 @@ These gates apply to every PR regardless of phase. A task is not done until all 
   - `docs/DEPLOYMENT.md` covers local, Docker, and Vercel deployment paths with all required environment variables documented.
   - All links within `docs/` resolve (no 404s) — verified with a link-checker script or CI step.
   - `docs/ARCHITECTURE.md`, `docs/API.md`, `docs/BACKEND.md`, `docs/FRONTEND.md`, and `docs/DATA_MODEL.md` reflect the final implemented state (no stale references to planned-but-not-shipped features).
+
+---
+
+## Phase 6 — Multi-user & Auth
+
+**Goal:** any visitor can sign in with Steam and see their own dashboard; data is isolated per user. Public profile pages stay public; sign-in adds a private dashboard and privacy controls.
+
+- [ ] **Multi-tenancy + Steam OpenID ADR** *(#59)*
+  - An ADR exists in `docs/adr/` recording: SteamID-as-account-key, the session strategy (JWT vs DB sessions) with rationale, the data-isolation approach, and the fate of the legacy `STEAM_ID` env var.
+  - Alternatives (email+password+link, no-login viewer) are documented with rejection reasons.
+  - The ADR states the Steam constraint explicitly: OpenID establishes identity, not access to private data — the Steam Web API still returns only public data.
+
+- [ ] **next-auth + Steam OpenID provider** *(#60)*
+  - Signing in via Steam OpenID establishes a session whose user carries the 17-digit SteamID **as a string** (e.g. `session.user.steamId`).
+  - `app/api/auth/[...nextauth]/route.ts` handles the flow; the OpenID claimed id maps to `steamId`.
+  - New env vars (e.g. `NEXTAUTH_SECRET`, `NEXTAUTH_URL`) are Zod-parsed in `server/env.ts` and present in `.env.example`; placeholders in `.env.ci` / `.env.test` let `pnpm build` and `pnpm test` pass with no real secrets.
+  - `STEAM_API_KEY` never appears in any client bundle (`grep -r "STEAM_API_KEY" .next/static` finds nothing after a production build).
+  - A test asserts the session→`steamId` mapping with Steam mocked (MSW, `onUnhandledRequest: 'error'`).
+
+- [ ] **Prisma: auth tables + per-user identity** *(#61)*
+  - next-auth persistence tables (`Account`, `Session`, `VerificationToken`) exist, or a documented JWT decision omits the session table — matching the ADR (#59).
+  - The `User` table is keyed by `steamId: String` and carries `createdAt`, `lastLoginAt`, and the privacy field used by #66.
+  - Snapshot tables retain the append-only `(steamId, appId, date)` compound key and are verified to work for **many** users.
+  - A new **immutable** migration applies cleanly via `pnpm prisma migrate dev` on SQLite and is valid for Postgres; no existing migration is edited.
+
+- [ ] **Session-scoped data layer** *(#62)*
+  - No repository, RSC, route handler, or job reads `env.STEAM_ID` as "the user"; each reads the session user's `steamId` or an explicit profile param.
+  - `env.STEAM_ID` is demoted to an **optional** dev / featured-profile fallback in `server/env.ts` and `.env.example`.
+  - Cache keys remain `steam:<endpoint>:<steamId>[:<appid>]`; a test proves two different steamIds get isolated cache entries and query results.
+  - A blank/missing `steamId` raises a typed error — never a silent fallback to another user's data.
+
+- [ ] **Route protection + data isolation** *(#63)*
+  - Unauthenticated access to a protected route (e.g. `/dashboard`) redirects to sign-in rather than returning a 500.
+  - Public profile pages (e.g. `/u/<steamId>`) render public data for any visitor; a private Steam profile renders the designed locked state.
+  - A test proves user A cannot read user B's private data via the API (no IDOR); private/unavailable profiles return `{ available: false, reason }`.
+  - CSRF protection is confirmed for every state-changing route.
+
+- [ ] **First-login onboarding backfill** *(#64)*
+  - A new user's first successful sign-in seeds reference rows + a baseline snapshot from their profile + owned games via `createMany({ skipDuplicates: true })`.
+  - The backfill is idempotent (a second login adds no duplicate rows) and respects the 1 req / 250 ms limiter with retry/backoff.
+  - During backfill the UI shows a designed "setting up your library" state; first paint is not blocked.
+  - A private profile at onboarding renders the locked state with a prompt to make the profile public; no crash, no fabricated data.
+
+- [ ] **Auth UI** *(#65)*
+  - A "Sign in with Steam" entry point starts the OpenID flow; the signed-in user menu shows avatar + persona name with sign-out and a link to account settings (#66).
+  - A logged-out landing explains the app and links to sign-in; protected areas redirect here.
+  - Avatar uses `next/image` from the allow-listed `avatars.steamstatic.com`; colors use Tailwind tokens only (no hardcoded hex); icons are `lucide-react` at stroke 1.75.
+  - Auth-dependent regions have skeletons (no CLS); the user menu is keyboard- and screen-reader-accessible. Per-route JS stays < 200 KB gzipped.
+
+- [ ] **Privacy controls + account settings** *(#66)*
+  - A user can set dashboard visibility to `public` / `friends-only` / `private`; the setting is enforced server-side by #63 (a non-permitted viewer gets the locked state).
+  - "Re-sync now" re-runs the backfill (#64) idempotently and rate-limited.
+  - "Delete my account & data" removes the user's auth, snapshot, and reference rows after a confirm step; no orphaned PII remains.
+  - friends-only with an unavailable (private) friends list **fails closed** — treated as private, never exposed.
+
+- [ ] **Multi-user security + docs pass** *(#67)*
+  - `docs/SECURITY.md` threat model is rewritten for multi-user: session hijack, CSRF, IDOR / profile authorization, secret management, account-deletion / PII, and rate-budget abuse across users, each with documented controls.
+  - `docs/ROADMAP.md` lists Phase 6 and moves Steam OpenID out of stretch goals; `docs/ARCHITECTURE.md` replaces "the configured user" with the session-user model.
+  - `README.md` setup reflects sign-in and notes `STEAM_ID` is an optional dev / featured fallback.
+  - All links within `docs/` resolve (no 404s).

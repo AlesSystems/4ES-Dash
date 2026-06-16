@@ -19,6 +19,7 @@ Rules:
 | ERR-0002 | 2026-06-16 | steam-client | High | GetPlayerAchievements 403 mislabeled "Steam API key rejected", crashing the dashboard | Fixed |
 | ERR-0003 | 2026-06-16 | frontend | Medium | Dashboard cold load ~38s — achievement summary fans out 3 Steam calls across the entire library | Fixed |
 | ERR-0004 | 2026-06-16 | db | Low | Prisma 7 breaking changes + SQLite-migrations can't replay on Postgres (`migrate deploy` acceptance) | Won't-fix |
+| ERR-0005 | 2026-06-16 | jobs | Medium | `createMany({ skipDuplicates })` unsupported on SQLite — snapshot idempotency needed a different write | Fixed |
 
 **Allowed values**
 
@@ -141,6 +142,27 @@ Copy this block when adding a new entry. Replace every placeholder including the
 **Where else this assumption may be wrong:** Any future doc/CI that assumes `migrate deploy` works against prod Postgres; the Docker target in `docs/DEPLOYMENT.md` (Postgres) also uses `migrate deploy` today and should move to `db push` or gain a Postgres migration history before it is exercised. A later Prisma 7 upgrade must revisit the `server/db.ts` import path and add a driver adapter.
 
 **Prevented by:** Reading the installed major's upgrade guide before building on it (caught here via Context7), and treating any acceptance criterion that spans two database engines as a flag to choose the migration strategy explicitly up front.
+
+---
+
+### ERR-0005 — `createMany({ skipDuplicates })` unsupported on SQLite
+
+**Date:** 2026-06-16
+**Module:** jobs
+**Severity:** Medium
+**Status:** Fixed
+
+**Symptom:** The snapshot job (#25) was specified (docs/BACKEND.md, docs/DATA_MODEL.md) to write snapshots with `prisma.playtimeSnapshot.createMany({ data, skipDuplicates: true })` for idempotency under retry. On the SQLite datasource this throws at query-build time: `Unknown argument 'skipDuplicates'`. Verified empirically against the generated Prisma 6 client before writing the job.
+
+**Root cause:** Prisma's `skipDuplicates` option for `createMany` is only implemented on connectors whose engine supports a bulk "insert-or-ignore" (PostgreSQL, MySQL/MariaDB, CockroachDB). The SQLite connector does not expose it, so the argument is rejected by the query validator.
+
+**Fix:** `server/jobs/snapshot.ts` writes each row with `prisma.playtimeSnapshot.upsert({ where: { steamId_appId_date }, create: {...}, update: {} })` inside a single `prisma.$transaction([...])`. The empty `update` makes a same-day re-run a no-op, giving the exact idempotency `skipDuplicates` would have (a second run inserts 0 rows). Integration test `tests/integration/snapshot.test.ts` asserts `COUNT(*)` is unchanged across two runs. docs/BACKEND.md updated to describe the upsert approach.
+
+**Generalized rule:** Prisma features are connector-specific — a method/option that works on Postgres may be absent on SQLite (and vice-versa). When dev/CI runs SQLite but prod runs Postgres, verify any non-trivial Prisma call on **SQLite** before relying on it, and prefer portable constructs (`upsert`, explicit transactions) over connector-gated options for cross-engine code.
+
+**Where else this assumption may be wrong:** Any future bulk-write path (achievement backfills, friend snapshots, reference-table seeding) that reaches for `createMany({ skipDuplicates })`, plus case-insensitive `mode: 'insensitive'` filters (also Postgres-only) — both will pass on a Postgres-only assumption and fail on SQLite dev/CI.
+
+**Prevented by:** The SQLite-first dev/CI gate (ERR-0004) actually catches this class of bug before prod; treat "works on Postgres" as unproven until the SQLite test suite is green.
 
 ---
 
