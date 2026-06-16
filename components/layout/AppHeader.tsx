@@ -1,4 +1,5 @@
 import Image from 'next/image';
+import Link from 'next/link';
 import { getProfile } from '@/server/repositories/profile';
 import { getLevel } from '@/server/repositories/level';
 import { isSteamApiError } from '@/lib/steam/errors';
@@ -63,9 +64,21 @@ export async function AppHeader(): Promise<JSX.Element> {
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-bg">
-      <div className="max-w-content mx-auto flex h-14 items-center gap-3 px-4 sm:gap-6 sm:px-6 lg:px-8">
-        {/* Wordmark */}
-        <span className="shrink-0 text-h3 font-semibold tracking-tight text-text-1">4ES·Dash</span>
+      <div className="flex h-14 items-center gap-3 px-4 sm:gap-6 sm:px-6 lg:px-8">
+        {/* Wordmark — amber dot logo + "4es" (serif italic) · "dash" (sans) */}
+        <Link
+          href="/"
+          aria-label="4es dash — home"
+          className="flex shrink-0 items-center gap-1.5 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+        >
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-500">
+            <span className="h-2 w-2 rounded-full bg-bg" aria-hidden />
+          </span>
+          <span className="font-serif text-h2 font-medium italic leading-none text-text-1">
+            4es
+          </span>
+          <span className="text-caption font-medium uppercase tracking-wide text-text-2">dash</span>
+        </Link>
 
         {/* Primary navigation */}
         <NavLinks />
