@@ -15,12 +15,19 @@ const config: Config = {
           500: 'var(--brand-500)',
           600: 'var(--brand-600)',
         },
+        accent: {
+          2: 'var(--accent-2)',
+          ink: 'var(--accent-ink)',
+        },
         bg: 'var(--bg)',
         surface: {
           DEFAULT: 'var(--surface)',
           2: 'var(--surface-2)',
         },
-        border: 'var(--border)',
+        border: {
+          DEFAULT: 'var(--border)',
+          2: 'var(--border-2)',
+        },
         text: {
           1: 'var(--text-1)',
           2: 'var(--text-2)',
@@ -41,11 +48,22 @@ const config: Config = {
           8: 'var(--chart-8)',
         },
       },
+      backgroundImage: {
+        // Warm two-stop page gradient (the "paper" wash). See app/globals.css.
+        grad: 'var(--bg-grad)',
+      },
       fontFamily: {
         sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
+        // Editorial display face — Source Serif 4. See docs/DESIGN.md.
+        serif: ['var(--font-source-serif)', 'Georgia', 'Cambria', 'serif'],
         mono: ['var(--font-jetbrains-mono)', 'ui-monospace', 'monospace'],
       },
       fontSize: {
+        // Editorial numeral scale (Wrapped). Use font-serif for the big numerals.
+        numeral: ['88px', { lineHeight: '76px', letterSpacing: '-0.04em' }],
+        'display-lg': ['56px', { lineHeight: '1', letterSpacing: '-0.025em' }],
+        'display-md': ['28px', { lineHeight: '1.1', letterSpacing: '-0.01em' }],
+        stat: ['22px', { lineHeight: '1', letterSpacing: '-0.02em' }],
         display: ['32px', { lineHeight: '40px' }],
         h1: ['24px', { lineHeight: '32px' }],
         h2: ['20px', { lineHeight: '28px' }],

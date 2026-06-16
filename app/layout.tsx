@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Inter, JetBrains_Mono } from 'next/font/google';
+import { Inter, JetBrains_Mono, Source_Serif_4 } from 'next/font/google';
 import Script from 'next/script';
 import './globals.css';
 import { AppHeader } from '@/components/layout/AppHeader';
@@ -14,6 +14,15 @@ const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
   variable: '--font-jetbrains-mono',
   display: 'swap',
+});
+
+// Editorial display face for the warm "Wrapped" system (headings, big numerals).
+// Italic is used for accents in headlines; include both styles.
+const sourceSerif = Source_Serif_4({
+  subsets: ['latin'],
+  variable: '--font-source-serif',
+  display: 'swap',
+  style: ['normal', 'italic'],
 });
 
 export const metadata: Metadata = {
@@ -33,7 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       lang="en"
       data-theme="dark"
       suppressHydrationWarning
-      className={`${inter.variable} ${jetbrainsMono.variable}`}
+      className={`${inter.variable} ${jetbrainsMono.variable} ${sourceSerif.variable}`}
     >
       <body className="min-h-screen bg-bg font-sans text-body text-text-1 antialiased">
         <Script id="theme-init" strategy="beforeInteractive">

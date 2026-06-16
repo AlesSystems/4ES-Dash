@@ -9,64 +9,74 @@ The product is a personal dashboard. It should feel calm, fast, and information-
 3. **Information density with breathing room.** Tight enough to compare at a glance, loose enough to scan.
 4. **Steam-aware, not Steam-imitative.** We acknowledge the source (avatars, header art) without copying the storefront aesthetic.
 5. **Dark-first.** Most people use this at night.
+6. **Editorial warmth ("Wrapped").** The visual system is the warm, year-in-review-flavoured direction from the `docs/design/` handoff bundle: paper-warm surfaces, a single amber/brick accent, and big Source Serif 4 numerals as the headline. Light mode is a designed paper theme, not an inversion.
 
 ## Color
 
-Tokens are defined in `app/globals.css` as CSS variables and consumed via Tailwind's `theme.extend`.
+Tokens are defined in `app/globals.css` as CSS variables and consumed via Tailwind's `theme.extend`. Values implement the warm "Wrapped" palette (`docs/design/project/wrapped.jsx`). Light = paper-warm (`:root`); dark = warm-ink (`[data-theme='dark']`).
 
-### Brand
+### Brand / accent
 
-| Token             | Light       | Dark        | Use                       |
-| ----------------- | ----------- | ----------- | ------------------------- |
-| `--brand-500`     | `#1B6FEB`   | `#5B9DFF`   | Primary actions, links    |
-| `--brand-600`     | `#1559C2`   | `#4488EE`   | Hover                     |
+| Token             | Light       | Dark        | Use                                |
+| ----------------- | ----------- | ----------- | ---------------------------------- |
+| `--brand-500`     | `#B8541F`   | `#E8A05C`   | Primary accent (actions, emphasis) |
+| `--brand-600`     | `#9C4419`   | `#DB8A40`   | Hover                              |
+| `--accent-2`      | `#3E5562`   | `#7E9BA8`   | Secondary accent (slate)           |
+| `--accent-ink`    | `#FFF8EB`   | `#1A120A`   | Text/icon on accent fills          |
 
 ### Surfaces
 
 | Token             | Light       | Dark        | Use                       |
 | ----------------- | ----------- | ----------- | ------------------------- |
-| `--bg`            | `#FAFAFB`   | `#0E1116`   | Page background           |
-| `--surface`       | `#FFFFFF`   | `#161A22`   | Cards                     |
-| `--surface-2`     | `#F3F4F6`   | `#1E232D`   | Raised / hover            |
-| `--border`        | `#E5E7EB`   | `#262C38`   | Dividers, card edges      |
+| `--bg`            | `#F4EDE1`   | `#141211`   | Page background           |
+| `--bg-grad`       | warm 2-stop | warm 2-stop | Page wash (`bg-grad`)     |
+| `--surface`       | `#FDF8ED`   | `#1C1816`   | Cards / panels            |
+| `--surface-2`     | `#F9F1E1`   | `#221D1A`   | Raised / hover            |
+| `--border`        | `#E3D8C4`   | `#2C2622`   | Dividers, card edges      |
+| `--border-2`      | `#CDC0A8`   | `#3A322C`   | Stronger / hover borders  |
 
 ### Text
 
 | Token             | Light       | Dark        | Use                       |
 | ----------------- | ----------- | ----------- | ------------------------- |
-| `--text-1`        | `#0B1220`   | `#E6EAF2`   | Primary                   |
-| `--text-2`        | `#3B4252`   | `#A8B0BF`   | Secondary                 |
-| `--text-3`        | `#6B7280`   | `#7A8294`   | Tertiary, hints           |
+| `--text-1`        | `#1F1A14`   | `#F4ECE2`   | Primary                   |
+| `--text-2`        | `#5A4F42`   | `#C8BDB0`   | Secondary                 |
+| `--text-3`        | `#8C7F6E`   | `#8B8278`   | Tertiary, hints           |
 
 ### State
 
-| Token             | Hex         | Use                       |
-| ----------------- | ----------- | ------------------------- |
-| `--success`       | `#2EBD6B`   | Achievement unlocked      |
-| `--warning`       | `#F5A524`   | Backlog warning           |
-| `--danger`        | `#E5484D`   | Errors                    |
-| `--info`          | `--brand-500` | Notices                 |
+| Token             | Light       | Dark        | Use                       |
+| ----------------- | ----------- | ----------- | ------------------------- |
+| `--success`       | `#2F7A34`   | `#7FBF7A`   | Achievement unlocked / up |
+| `--warning`       | `#B8541F`   | `#E8A05C`   | Backlog warning           |
+| `--danger`        | `#A8392C`   | `#E07B6A`   | Errors / down             |
+| `--info`          | `--brand-500` | `--brand-500` | Notices                 |
 
 ### Charts
 
-A categorical palette of 8 hues optimized for adjacent-bar readability. Defined as `--chart-1` … `--chart-8`. Picked from Tremor's defaults, lightly tuned for dark mode.
+A categorical palette of 8 hues (`--chart-1` … `--chart-8`), tuned to the warm palette. (No chart components ship yet — the dashboard's 12-week trend is deferred to a later phase with snapshot history.)
 
 ## Typography
 
-- **UI sans**: `Inter` via `next/font`.
+- **UI sans**: `Inter` via `next/font`. (The mockup's body face "Söhne" is a paid font; Inter is its documented fallback.)
+- **Display / editorial**: `Source Serif 4` via `next/font` (`font-serif`). Used for headlines and the big numerals; italics for accent words in headlines.
 - **Mono**: `JetBrains Mono` for numbers in tables (tabular figures) and code.
 
-| Class            | Size / Line   | Use                            |
-| ---------------- | ------------- | ------------------------------ |
-| `text-display`   | 32 / 40       | Hero numbers                   |
-| `text-h1`        | 24 / 32       | Page titles                    |
-| `text-h2`        | 20 / 28       | Card titles                    |
-| `text-h3`        | 16 / 24       | Section headings               |
-| `text-body`      | 14 / 20       | Default                        |
-| `text-caption`   | 12 / 16       | Labels, metadata               |
-| `text-mono`      | 13 / 20 mono  | Numeric columns                |
+| Class               | Size / Line   | Use                                  |
+| ------------------- | ------------- | ------------------------------------ |
+| `text-numeral`      | 88 / 76       | Hero KPI / backlog numerals (serif)  |
+| `text-display-lg`   | 56 / 1        | Library page title (serif)           |
+| `text-display-md`   | 28 / 1.1      | Profile / section headline (serif)   |
+| `text-stat`         | 22 / 1        | Tile hours, inline stat numbers      |
+| `text-display`      | 32 / 40       | Hero numbers (legacy)                |
+| `text-h1`           | 24 / 32       | Page titles                          |
+| `text-h2`           | 20 / 28       | Card titles                          |
+| `text-h3`           | 16 / 24       | Section headings / tile titles       |
+| `text-body`         | 14 / 20       | Default                              |
+| `text-caption`      | 12 / 16       | Labels, metadata                     |
+| `text-mono`         | 13 / 20 mono  | Numeric columns                      |
 
-Use tabular-nums (`font-variant-numeric: tabular-nums`) for any column of numbers.
+Use tabular-nums (`font-variant-numeric: tabular-nums`) for any column of numbers. The big serif numerals are part of the visual identity — pair `font-serif` + `tabular-nums`.
 
 ## Spacing
 
