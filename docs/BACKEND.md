@@ -91,14 +91,18 @@ with no achievement schema → `unavailable('no-achievements')`. See
 - Two flavors of table:
   - **Reference**: `Game`, `Achievement`, `User`, `OwnedGame`. Upserted on read-through.
   - **Snapshot**: `PlaytimeSnapshot`, `AchievementSnapshot`. Append-only, one row per (steamId, appid, date).
-- All snapshot writes use `createMany({ skipDuplicates: true })` to be safe under retry.
+- Snapshot writes are idempotent via per-row `upsert` on the compound `(steamId, appId, date)` PK
+  inside a single `$transaction`. (Prisma's `createMany({ skipDuplicates })` is **not supported on
+  SQLite** — see ERR-0005 — so we use upserts with an empty `update`, which a same-day re-run no-ops.)
 
 ## Background jobs
 
-- Registered in `server/jobs/index.ts` and invoked by `/api/jobs/*` route handlers.
-- Each handler verifies `x-cron-secret` header against `CRON_SECRET`.
+- Registered in `server/jobs/index.ts` (`runSnapshot`) and invoked by `/api/cron/*` route handlers.
+- The cron route verifies the `x-cron-secret` header against `CRON_SECRET` with a **timing-safe** SHA-256
+  digest comparison; a missing/invalid/unconfigured secret returns `401`.
 - Jobs are idempotent — re-running the same day's snapshot must not create dupes (compound unique on `(steamId, appId, date)`).
-- Long-running jobs stream progress to a `JobRun` table for observability.
+- `playtimeForever` is monotonic: a reported decrease is clamped up to the latest prior value and logged.
+- Each run writes a `JobRun` row (`running` → `ok`/`error`) with a JSON payload for observability.
 
 ## Validation
 

@@ -126,13 +126,15 @@ These gates apply to every PR regardless of phase. A task is not done until all 
   - [x] All migrations in `prisma/migrations/` are immutable — no existing migration file is modified after it has been committed to `main`.
   - [x] `server/db.ts` exports a single Prisma client instance; no other file instantiates `new PrismaClient()`.
 
-- [ ] **Nightly snapshot job (playtime + achievement state)**
-  - `POST /api/cron/snapshot` with the correct `x-cron-secret` header triggers the job and returns HTTP 200.
-  - `POST /api/cron/snapshot` without the header or with an incorrect header returns HTTP 401.
-  - The job is idempotent: calling it twice for the same calendar day inserts no duplicate rows — verified by running the route twice and asserting `SELECT COUNT(*)` on the snapshot table returns the same value both times.
-  - The job records a `(steamId, appId, date)` snapshot for every owned game; the `date` field is the UTC calendar day (not a timestamp).
-  - `playtimeForever` in a new snapshot is never less than the previous snapshot value; if Steam returns a lower number (a Steam-side correction), the job clamps to the previous value and logs a warning.
-  - The job processes all owned games within a single run; it does not require multiple invocations to complete.
+- [x] **Nightly snapshot job (playtime + achievement state)** *(#25)*
+  - [x] `POST /api/cron/snapshot` with the correct `x-cron-secret` header triggers the job and returns HTTP 200.
+  - [x] `POST /api/cron/snapshot` without the header or with an incorrect header returns HTTP 401.
+  - [x] The job is idempotent: calling it twice for the same calendar day inserts no duplicate rows — verified by running the route twice and asserting `SELECT COUNT(*)` on the snapshot table returns the same value both times.
+  - [x] The job records a `(steamId, appId, date)` snapshot for every owned game; the `date` field is the UTC calendar day (not a timestamp).
+  - [x] `playtimeForever` in a new snapshot is never less than the previous snapshot value; if Steam returns a lower number (a Steam-side correction), the job clamps to the previous value and logs a warning.
+  - [x] The job processes all owned games within a single run; it does not require multiple invocations to complete. (Achievement-unlock snapshots are bounded to the top 20 played games — rate-limit cost; playtime covers the full library.)
+
+  > **#26 snapshot-inferred `acquiredAt`** — the read side (`getFirstSeenDates`, `getLibraryWithAcquisition` in `server/repositories/snapshots.ts`) lands here and is tested; its UI consumption (`sort=added` lighting up) is wired in the features PR (#27–#29).
 
 - [ ] **Time-series chart: playtime per week / month**
   - The chart renders on `/history` (or equivalent) and shows playtime aggregated by ISO week or calendar month, selectable via a toggle.
