@@ -32,7 +32,7 @@ SQLite at `dev.db`. In-memory cache. No cron — invoke `/api/cron/snapshot` man
 
 ```bash
 docker compose up -d --build
-docker compose exec app pnpm prisma migrate deploy
+docker compose exec app pnpm prisma db push   # Postgres: schema-driven sync, no migration replay (see ERR-0004)
 ```
 
 The container exposes port `3000`. A separate `cron` service hits `/api/jobs/snapshot` on its schedule, authenticating with `CRON_SECRET`.
