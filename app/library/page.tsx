@@ -70,9 +70,12 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
   let multiplayerAppIds: Set<number> | null = null;
   let uncategorizedCount = 0;
   if (multiplayer) {
+    // On a total repo failure, treat every game as uncategorized so the
+    // "Some games could not be categorized" note surfaces instead of a silent
+    // empty grid (degrade, never hide — see CLAUDE.md degradation contract).
     const mp = await getMultiplayerAppIds().catch(() => ({
       multiplayerAppIds: new Set<number>(),
-      missingCount: 0,
+      missingCount: games.length,
       stale: false,
     }));
     multiplayerAppIds = mp.multiplayerAppIds;

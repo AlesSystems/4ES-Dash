@@ -64,6 +64,7 @@ describe('getStoreMetadata – happy path', () => {
     expect(meta.headerImage).toContain('header.jpg');
     expect(meta.genres).toEqual(['Free to Play', 'Puzzle']);
     expect(meta.categories).toEqual(['Multi-player', 'Co-op', 'Steam Achievements']);
+    expect(meta.categoryIds).toEqual([1, 9, 22]);
     expect(meta.developers).toEqual(['Valve']);
     expect(meta.publishers).toEqual(['Valve']);
     expect(meta.releaseDate).toBe('19 Apr, 2011');
