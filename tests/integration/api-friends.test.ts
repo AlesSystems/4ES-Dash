@@ -157,7 +157,10 @@ describe('GET /api/friends – private friend list', () => {
 // Stale-while-revalidate
 // ---------------------------------------------------------------------------
 
-describe('GET /api/friends – stale-while-revalidate', () => {
+describe('GET /api/friends – cache-hit resilience', () => {
+  // This asserts the route stays up when an upstream call fails while a warm
+  // cache entry exists (the request never reaches Steam). The page-level
+  // "Data may be outdated" stale indicator is covered in friends-stale.test.tsx.
   it('returns 200 with cached friends when GetPlayerSummaries fails after a prior success', async () => {
     // First call: prime the cache with two friends.
     const twoFriendsPayload = {
@@ -190,17 +193,14 @@ describe('GET /api/friends – stale-while-revalidate', () => {
     const firstRes = await callGET();
     expect(firstRes.status).toBe(200);
 
-    // Second call: GetPlayerSummaries now fails. The cache (friend-list) is still warm
-    // but summaries TTL is 5 min — we need to expire that entry.
-    // We exploit the stale-while-revalidate path: summaries entry is in cache but the
-    // test re-runs clearCache, so we use a different strategy: let the response handler
-    // return 500 and verify the route still returns 200 from the cached summaries entry
-    // that was warmed by the first call (cache is NOT cleared between these two calls).
+    // Second call: GetPlayerSummaries now fails (500). The cache is NOT cleared
+    // between the two calls (beforeEach only runs before each test, not between
+    // statements), so both the friend-list and summaries entries are still warm.
     steamServer.use(http.get(PLAYER_SUMMARIES_URL, () => new HttpResponse(null, { status: 500 })));
 
-    // The summaries cache entry is still within TTL (inserted just now), so the 500
-    // won't be reached — the cache hit returns the previous value. This validates that
-    // the stale-while-revalidate contract holds end-to-end (route returns 200).
+    // The summaries entry is still within its 5-min TTL, so the loader (and thus
+    // the 500) is never reached — the warm cache returns the previous value and
+    // the route stays 200. (True expired-entry SWR is unit-tested in cache.test.ts.)
     const secondRes = await callGET();
     expect(secondRes.status).toBe(200);
 

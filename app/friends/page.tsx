@@ -45,7 +45,10 @@ export default async function FriendsPage(): Promise<JSX.Element> {
     );
   }
 
-  const onlineCount = friends.filter((f) => f.status === 'online' || f.status === 'away').length;
+  // Count strictly-online separately from away — the per-card badges distinguish
+  // the two, so the summary must not lump "away" friends under "online".
+  const onlineCount = friends.filter((f) => f.status === 'online').length;
+  const awayCount = friends.filter((f) => f.status === 'away').length;
   const inGameCount = friends.filter((f) => f.inGame).length;
 
   return (
@@ -54,15 +57,29 @@ export default async function FriendsPage(): Promise<JSX.Element> {
       <div className="mb-6">
         <h1 className="font-serif text-display-md font-normal tracking-tight text-text-1">
           Friends
-          <span className="ml-3 font-serif italic text-text-3">,</span>
+          <span aria-hidden="true" className="ml-3 font-serif italic text-text-3">
+            ,
+          </span>
         </h1>
         <p className="mt-2 font-mono text-caption tabular-nums text-text-3">
           {friends.length} friends
-          <span className="mx-2 text-border-2">·</span>
+          <span aria-hidden="true" className="mx-2 text-border-2">
+            ·
+          </span>
           {onlineCount} online
+          {awayCount > 0 && (
+            <>
+              <span aria-hidden="true" className="mx-2 text-border-2">
+                ·
+              </span>
+              {awayCount} away
+            </>
+          )}
           {inGameCount > 0 && (
             <>
-              <span className="mx-2 text-border-2">·</span>
+              <span aria-hidden="true" className="mx-2 text-border-2">
+                ·
+              </span>
               {inGameCount} in-game
             </>
           )}
