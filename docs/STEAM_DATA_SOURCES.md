@@ -67,7 +67,7 @@ This document maps every planned 4ES-Dash feature to its data source. It exists 
 | "Year in Review" — annual playtime, top games | Local DB | Derived from snapshots |
 | Genre / tag breakdown | **T2** | `store.steampowered.com/api/appdetails` (genres + categories per game, cached 7 days) |
 | Cost-per-hour ranking — current prices | **T2** | `store.steampowered.com/api/appdetails?filters=price_overview` |
-| Cost-per-hour ranking — prices paid | **T4** → Manual | Not available from Steam; supplied via `ManualGameData` import (#40) — falls back to current price when absent |
+| Cost-per-hour ranking — prices paid | **T4** → Manual | Not available from Steam. Captured via `ManualGameData` import (#40) for future use; the Phase 4 cost-per-hour page itself uses **current store price only** (per ACCEPTANCE.md #36), so its disclaimer stays accurate |
 | Idle-detection heuristic | Local DB | Derived from playtime snapshot delta analysis |
 
 ### Stretch goals
@@ -178,7 +178,7 @@ Manual import adds optional DB columns and an import route. It is tracked as a P
 | Unavailable / limited data | Tier | Chosen free strategy | Resulting UI behavior |
 |---------------------------|------|----------------------|-----------------------|
 | Acquisition date (`acquiredAt`) | T4 | Snapshot inference — first date game appears in nightly snapshot | Sort by `added` works for games seen since baseline; older games sort last with a UI note |
-| Price paid | T4 | `ManualGameData` table (#40): user imports `pricePaidCents` + `currency` via CSV/JSON; cost-per-hour prefers real paid price when present; falls back to current store price with disclaimer | "Library value" shows current total value; "vs. paid" column populated once import is present; shows `—` otherwise |
+| Price paid | T4 | `ManualGameData` table (#40): user imports `pricePaidCents` + `currency` via CSV/JSON; stored for future features. The Phase 4 cost-per-hour ranking uses current store price only (ACCEPTANCE.md #36) | "Library value" shows current total value; cost-per-hour shows current price with the persistent "not what you paid" disclaimer |
 | Friends activity feed | T4 | Not pursued — no free mechanism exists | Feature descoped; friends page shows online status and current game only |
 | Genres / tags | T2 + opt-in T3 | Store API primary; SteamSpy opt-in supplements and fills gaps | Shown when available; card renders without genre chip if missing |
 | Ownership / popularity | Opt-in T3 | SteamSpy opt-in only (`ENABLE_STEAMSPY=true`) | Popularity band shown if SteamSpy enabled; hidden otherwise |

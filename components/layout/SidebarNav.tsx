@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Library, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, Library, BarChart2, Calendar, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface BrowseItem {
@@ -21,12 +21,16 @@ interface BrowseItem {
  * entries from the mockup (Collections, Friends) are intentionally omitted —
  * see the degradation contract in CLAUDE.md.
  */
+const CURRENT_YEAR = new Date().getUTCFullYear();
+
 export function SidebarNav({ libraryCount }: { libraryCount: number | null }): JSX.Element {
   const pathname = usePathname();
 
   const items: BrowseItem[] = [
     { label: 'Dashboard', href: '/', icon: LayoutDashboard, count: null },
     { label: 'Library', href: '/library', icon: Library, count: libraryCount },
+    { label: 'Insights', href: '/insights/genres', icon: BarChart2, count: null },
+    { label: 'Year in Review', href: `/review/${CURRENT_YEAR}`, icon: Calendar, count: null },
   ];
 
   return (
