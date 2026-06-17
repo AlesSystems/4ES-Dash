@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { LayoutGrid, List, Search } from 'lucide-react';
+import { LayoutGrid, List, Search, Users } from 'lucide-react';
 import {
   SORT_KEYS,
   SORT_LABELS,
@@ -22,6 +22,8 @@ export interface LibraryControlsProps {
   addedUnavailable: boolean;
   status?: StatusFilter;
   view?: ViewMode;
+  multiplayer?: boolean;
+  uncategorizedCount?: number;
 }
 
 export function LibraryControls({
@@ -32,6 +34,8 @@ export function LibraryControls({
   addedUnavailable,
   status = 'all',
   view = 'grid',
+  multiplayer = false,
+  uncategorizedCount = 0,
 }: LibraryControlsProps): JSX.Element {
   const router = useRouter();
   const pathname = usePathname();
@@ -134,6 +138,23 @@ export function LibraryControls({
           })}
         </div>
 
+        {/* Multiplayer filter toggle */}
+        <button
+          type="button"
+          aria-pressed={multiplayer}
+          onClick={() => updateUrl('multiplayer', multiplayer ? '' : '1')}
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-caption font-medium transition-colors',
+            'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+            multiplayer
+              ? 'bg-brand-500 text-accent-ink'
+              : 'border border-border-2 text-text-2 hover:text-text-1',
+          )}
+        >
+          <Users size={14} strokeWidth={1.75} aria-hidden />
+          Multiplayer
+        </button>
+
         {/* Sort */}
         <div>
           <label htmlFor="library-sort" className="sr-only">
@@ -207,6 +228,11 @@ export function LibraryControls({
           Dates are inferred from snapshots and may be missing for games owned before tracking
           began.
         </p>
+      )}
+
+      {/* Multiplayer uncategorized note */}
+      {multiplayer && uncategorizedCount > 0 && (
+        <p className="text-caption text-text-3">Some games could not be categorized.</p>
       )}
     </div>
   );
