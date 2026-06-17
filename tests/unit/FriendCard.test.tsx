@@ -65,8 +65,21 @@ describe('FriendCard', () => {
 
   it('links to the friend Steam profile URL', () => {
     render(<FriendCard friend={baseFriend} />);
-    const link = screen.getByRole('link');
-    expect(link).toHaveAttribute('href', 'https://steamcommunity.com/id/kael');
+    const profileLink = screen.getByRole('link', { name: /view Steam profile/ });
+    expect(profileLink).toHaveAttribute('href', 'https://steamcommunity.com/id/kael');
+  });
+
+  it('renders a Compare link pointing to /compare?b=<steamId>', () => {
+    render(<FriendCard friend={baseFriend} />);
+    const compareLink = screen.getByRole('link', { name: /compare with kael/i });
+    expect(compareLink).toHaveAttribute('href', '/compare?b=76561198000000001');
+  });
+
+  it('the Compare link href uses the correct steamId', () => {
+    const friend: FriendSummary = { ...baseFriend, steamId: '76561198999999999' };
+    render(<FriendCard friend={friend} />);
+    const compareLink = screen.getByRole('link', { name: /compare with/i });
+    expect(compareLink).toHaveAttribute('href', '/compare?b=76561198999999999');
   });
 
   it('renders "Friends since <year>" when friendSince is set', () => {
@@ -81,5 +94,11 @@ describe('FriendCard', () => {
   it('does NOT render "Friends since" when friendSince is null', () => {
     render(<FriendCard friend={baseFriend} />);
     expect(screen.queryByText(/Friends since/)).not.toBeInTheDocument();
+  });
+
+  it('renders exactly two links: profile (external) and compare (internal)', () => {
+    render(<FriendCard friend={baseFriend} />);
+    const links = screen.getAllByRole('link');
+    expect(links).toHaveLength(2);
   });
 });
