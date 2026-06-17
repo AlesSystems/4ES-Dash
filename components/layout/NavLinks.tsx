@@ -12,6 +12,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', href: '/' },
   { label: 'Library', href: '/library' },
   { label: 'History', href: '/history' },
+  { label: 'Friends', href: '/friends' },
 ];
 
 export function NavLinks(): JSX.Element {

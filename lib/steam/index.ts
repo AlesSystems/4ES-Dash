@@ -9,10 +9,13 @@ export {
 export {
   OwnedGameSchema,
   PlayerSummarySchema,
+  FriendSummarySchema,
   RawOwnedGames,
   RawPlayerSummaries,
   type OwnedGame,
   type PlayerSummary,
+  type FriendSummary,
+  type FriendStatus,
 } from './schemas';
 export { getRecentlyPlayedGames, type RecentGame } from './recently-played';
 export { getSteamLevel } from './level';
@@ -29,3 +32,9 @@ export {
   type StoreMetadata,
   type StorePrice,
 } from './store-client';
+export {
+  getFriendList,
+  getPlayerSummariesBatch,
+  personaStateToStatus,
+  sortFriends,
+} from './friends';
