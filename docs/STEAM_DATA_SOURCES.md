@@ -67,7 +67,7 @@ This document maps every planned 4ES-Dash feature to its data source. It exists 
 | "Year in Review" — annual playtime, top games | Local DB | Derived from snapshots |
 | Genre / tag breakdown | **T2** | `store.steampowered.com/api/appdetails` (genres + categories per game, cached 7 days) |
 | Cost-per-hour ranking — current prices | **T2** | `store.steampowered.com/api/appdetails?filters=price_overview` |
-| Cost-per-hour ranking — prices paid | **T4** ⚠️ | Not available; approximation only (show current price, not paid price) |
+| Cost-per-hour ranking — prices paid | **T4** → Manual | Not available from Steam; supplied via `ManualGameData` import (#40) — falls back to current price when absent |
 | Idle-detection heuristic | Local DB | Derived from playtime snapshot delta analysis |
 
 ### Stretch goals
@@ -153,12 +153,14 @@ This is a zero-cost, zero-dependency inference mechanism available to every self
 
 Two free third-party APIs supplement data Steam does not expose. Both are **disabled by default** and must be explicitly opted in via env vars. Enabling them adds outbound calls to third-party servers — a privacy trade-off the self-hoster consciously accepts.
 
-| Service | Env var to enable | Cost | Rate limit | Cache TTL | Supplements |
-|---------|-------------------|------|------------|-----------|-------------|
-| **SteamSpy** (`https://steamspy.com/api.php`) | `ENABLE_STEAMSPY=true` | Free, no API key | ~1 req/sec | ≥ 24 h | Genres/tags, ownership bands |
-| **IsThereAnyDeal** (`https://api.isthereanydeal.com`) | `ITAD_API_KEY=<key>` (free key) | Free API key | Per-key quota | ≥ 24 h | Historical-low price, best current deal |
+| Service | Env var to enable | Cost | Rate limit | Cache TTL | Supplements | Client module |
+|---------|-------------------|------|------------|-----------|-------------|---------------|
+| **SteamSpy** (`https://steamspy.com/api.php`) | `ENABLE_STEAMSPY=1` or `ENABLE_STEAMSPY=true` | Free, no API key | ≤ 1 req/sec | ≥ 24 h (`steamSpy` TTL) | Genres/tags, ownership bands | `lib/steam/steamspy-client.ts` |
+| **IsThereAnyDeal** (`https://api.isthereanydeal.com`) | `ITAD_API_KEY=<key>` (free key from ITAD) | Free API key | Per-key quota | ≥ 24 h (`itadPrice` TTL) | Historical-low price, best current deal | `lib/steam/itad-client.ts` |
 
-**No paid services are used anywhere in this project.** If `ENABLE_STEAMSPY` is not set to `true` or `ITAD_API_KEY` is unset, the respective enrichment path is skipped entirely and the UI falls through to the `available: false` state. The privacy implication (extra outbound third-party calls revealing which games you own) is why enrichment is opt-in.
+**No paid services are used anywhere in this project.** If `ENABLE_STEAMSPY` is not set to `1`/`true` or `ITAD_API_KEY` is unset, the respective enrichment path is skipped entirely and the UI falls through to the `available: false` state. The privacy implication (extra outbound third-party calls revealing which games you own) is why enrichment is opt-in.
+
+Both clients follow the **store-client T2 pattern**: no API key embedded in the URL for SteamSpy (key-less), a custom `User-Agent: 4ES-Dash/<version>` header, and a _never-throw_ contract — unexpected shapes or network errors degrade to `unavailable('metadata-unavailable')` rather than bubbling up.
 
 IsThereAnyDeal allows a better approximation of library value and cost-per-hour by supplying historical-low prices, since Steam only exposes the current price.
 
@@ -176,7 +178,7 @@ Manual import adds optional DB columns and an import route. It is tracked as a P
 | Unavailable / limited data | Tier | Chosen free strategy | Resulting UI behavior |
 |---------------------------|------|----------------------|-----------------------|
 | Acquisition date (`acquiredAt`) | T4 | Snapshot inference — first date game appears in nightly snapshot | Sort by `added` works for games seen since baseline; older games sort last with a UI note |
-| Price paid | T4 | Manual CSV/JSON import (Phase 4); interim: show current price with disclaimer | "Library value" shows current total value; "vs. paid" column shows `—` until import |
+| Price paid | T4 | `ManualGameData` table (#40): user imports `pricePaidCents` + `currency` via CSV/JSON; cost-per-hour prefers real paid price when present; falls back to current store price with disclaimer | "Library value" shows current total value; "vs. paid" column populated once import is present; shows `—` otherwise |
 | Friends activity feed | T4 | Not pursued — no free mechanism exists | Feature descoped; friends page shows online status and current game only |
 | Genres / tags | T2 + opt-in T3 | Store API primary; SteamSpy opt-in supplements and fills gaps | Shown when available; card renders without genre chip if missing |
 | Ownership / popularity | Opt-in T3 | SteamSpy opt-in only (`ENABLE_STEAMSPY=true`) | Popularity band shown if SteamSpy enabled; hidden otherwise |

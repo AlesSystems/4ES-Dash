@@ -100,6 +100,38 @@ model AchievementSnapshot {
   @@id([steamId, appId, date])
 }
 
+// ─── Manual / enrichment data (Phase 4) ────────────────────────────────────
+
+// User-supplied data Steam never exposes (price paid, acquisition date) — see
+// #40. Kept separate from OwnedGame so the *inferred* acquiredAt (first
+// snapshot) is never overwritten by an import, and so cost-per-hour can prefer
+// real price-paid over current store price when present. (steamId, appId) is
+// the natural unique key.
+model ManualGameData {
+  steamId        String
+  appId          Int
+  pricePaidCents Int? // what the user actually paid, in minor units
+  currency       String? // ISO 4217 of pricePaidCents (e.g. "USD")
+  acquiredAt     DateTime? // real acquisition date supplied by the user
+  importedAt     DateTime  @default(now())
+
+  @@id([steamId, appId])
+}
+
+// A dismissed idle-detection flag (#37). Keyed by the exact spike window so a
+// *new* spike (different window) re-surfaces the game; dismissing one window
+// never hides a future one.
+model IdleDismissal {
+  steamId     String
+  appId       Int
+  fromDate    DateTime
+  toDate      DateTime
+  dismissedAt DateTime @default(now())
+
+  @@id([steamId, appId, fromDate, toDate])
+  @@index([steamId, appId])
+}
+
 // ─── Observability ─────────────────────────────────────────────────────────
 
 model JobRun {

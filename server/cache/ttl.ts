@@ -11,6 +11,8 @@ export const TTL = Object.freeze({
   friendList: 86400, // 24 h
   storeMetadata: 604800, // 7 days
   storePrice: 3600, // 1 h
+  steamSpy: 86400, // 24 h — SteamSpy enrichment (#38); honours their ≥24h cache ask
+  itadPrice: 86400, // 24 h — ITAD historical-low price (#39); changes slowly
 } as const);
 
 export type TtlKey = keyof typeof TTL;
