@@ -5,8 +5,6 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { POST } from '@/app/api/import/route';
 import { prisma } from '@/server/db';
 
-const STEAM_ID = '76561198000000000';
-
 async function resetDb(): Promise<void> {
   await prisma.manualGameData.deleteMany();
 }
@@ -87,6 +85,3 @@ describe('POST /api/import — CSV path', () => {
     expect(body.imported).toBe(2);
   });
 });
-
-// Suppress unused variable warning
-void STEAM_ID;

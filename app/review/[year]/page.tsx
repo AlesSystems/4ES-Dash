@@ -75,23 +75,21 @@ export default async function YearInReviewPage({ params }: ReviewPageProps) {
           {/* ── Top games section ── */}
           <TopGamesSection topGames={review.topGames} />
 
-          {/* ── Achievements section ── */}
-          {review.achievementsUnlocked > 0 && (
-            <section aria-labelledby="achievements-heading">
-              <p className="font-mono text-caption uppercase tracking-widest text-text-3">
-                Achievements
-              </p>
-              <div className="mt-4 flex items-baseline gap-3">
-                <span className="font-serif text-display-lg tabular-nums text-text-1">
-                  {review.achievementsUnlocked.toLocaleString()}
-                </span>
-                <span className="font-serif text-h1 italic text-text-2">unlocked</span>
-              </div>
-              <p id="achievements-heading" className="sr-only">
-                Achievements unlocked in {year}
-              </p>
-            </section>
-          )}
+          {/* ── Achievements section (always shown; 0 is a designed state) ── */}
+          <section aria-labelledby="achievements-heading">
+            <p className="font-mono text-caption uppercase tracking-widest text-text-3">
+              Achievements
+            </p>
+            <div className="mt-4 flex items-baseline gap-3">
+              <span className="font-serif text-display-lg tabular-nums text-text-1">
+                {review.achievementsUnlocked.toLocaleString()}
+              </span>
+              <span className="font-serif text-h1 italic text-text-2">unlocked</span>
+            </div>
+            <p id="achievements-heading" className="sr-only">
+              Achievements unlocked in {year}
+            </p>
+          </section>
         </div>
       )}
 
