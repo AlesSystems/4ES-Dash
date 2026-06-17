@@ -230,6 +230,38 @@ describe('getComparison – one side private (B)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Case 2b: Both sides private
+// ---------------------------------------------------------------------------
+
+describe('getComparison – both sides private', () => {
+  beforeEach(() => {
+    steamServer.use(
+      http.get(PLAYER_SUMMARIES_URL, ({ request }) => {
+        const steamids = new URL(request.url).searchParams.get('steamids') ?? '';
+        if (steamids.includes(ID_A)) return HttpResponse.json(playerSummaryBody(ID_A));
+        if (steamids.includes(ID_B)) return HttpResponse.json(playerSummaryBody(ID_B));
+        return new HttpResponse(null, { status: 400 });
+      }),
+      // Both libraries private — Steam returns { response: {} } for each.
+      http.get(OWNED_GAMES_URL, () => HttpResponse.json({ response: {} })),
+    );
+  });
+
+  it('marks both sides private, skips shared, keeps profiles', async () => {
+    const result = await getComparison(ID_A, ID_B);
+    expect(result.a.isPrivate).toBe(true);
+    expect(result.b.isPrivate).toBe(true);
+    expect(result.a.gamesCount).toBeNull();
+    expect(result.b.gamesCount).toBeNull();
+    expect(result.shared).toBeNull();
+    expect(result.sharedSkipped).toBe('unavailable');
+    // Summaries are public even when libraries are private.
+    expect(result.a.profile).not.toBeNull();
+    expect(result.b.profile).not.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Case 3: Same user
 // ---------------------------------------------------------------------------
 
