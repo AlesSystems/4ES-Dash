@@ -8,9 +8,11 @@ import {
   filterByStatus,
   type LibraryGame,
 } from '@/lib/games/sort';
+import { parseMultiplayerParam, filterToMultiplayer } from '@/lib/games/multiplayer';
 import { accountAgeYears } from '@/lib/format/account';
 import { getProfile } from '@/server/repositories/profile';
 import { getFirstSeenDates } from '@/server/repositories/snapshots';
+import { getMultiplayerAppIds } from '@/server/repositories/multiplayer';
 import { EmptyState } from '@/components/states/EmptyState';
 import { StaleBanner } from '@/components/states/StaleBanner';
 import { LibraryHeader } from '@/components/library/LibraryHeader';
@@ -24,7 +26,7 @@ export const dynamic = 'force-dynamic';
 const SHELL = 'px-4 py-8 sm:px-6 lg:px-10';
 
 interface LibraryPageProps {
-  searchParams: { sort?: string; q?: string; status?: string; view?: string };
+  searchParams: { sort?: string; q?: string; status?: string; view?: string; multiplayer?: string };
 }
 
 export default async function LibraryPage({ searchParams }: LibraryPageProps) {
@@ -61,8 +63,27 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
   const status = parseStatusKey(searchParams.status);
   const view = parseViewMode(searchParams.view);
   const q = searchParams.q ?? '';
+  const multiplayer = parseMultiplayerParam(searchParams.multiplayer);
 
-  const shown = sortGames(filterByStatus(filterGames(games, q), status), sort);
+  // Only fetch multiplayer category data when the filter is active.
+  // Cold-cache Store fetches are expensive — do NOT slow the default library view.
+  let multiplayerAppIds: Set<number> | null = null;
+  let uncategorizedCount = 0;
+  if (multiplayer) {
+    const mp = await getMultiplayerAppIds().catch(() => ({
+      multiplayerAppIds: new Set<number>(),
+      missingCount: 0,
+      stale: false,
+    }));
+    multiplayerAppIds = mp.multiplayerAppIds;
+    uncategorizedCount = mp.missingCount;
+    stale = stale || mp.stale;
+  }
+
+  const base = filterByStatus(filterGames(games, q), status);
+  const filtered =
+    multiplayer && multiplayerAppIds ? filterToMultiplayer(base, multiplayerAppIds) : base;
+  const shown = sortGames(filtered, sort);
 
   // Show the inferred-date note whenever sort=added is active and ANY game still
   // lacks an acquiredAt — games owned before snapshotting began stay null.
@@ -92,6 +113,8 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
         total={games.length}
         shown={shown.length}
         addedUnavailable={addedUnavailable}
+        multiplayer={multiplayer}
+        uncategorizedCount={uncategorizedCount}
       />
 
       <div className="mt-6">

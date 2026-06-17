@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { LibraryControls } from '@/components/library/LibraryControls';
 import { SORT_KEYS, SORT_LABELS } from '@/lib/games/sort';
 
+// Shared mock replace function — reassigned per test that needs to assert on it.
+const mockReplace = vi.fn();
+
 // Mock next/navigation so the client component can render in jsdom.
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ replace: vi.fn() }),
+  useRouter: () => ({ replace: mockReplace }),
   useSearchParams: () => new URLSearchParams(),
   usePathname: () => '/library',
 }));
@@ -100,5 +103,61 @@ describe('LibraryControls', () => {
     render(<LibraryControls {...defaultProps} />);
     expect(screen.getByRole('button', { name: /grid view/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /list view/i })).toBeInTheDocument();
+  });
+
+  // ── Multiplayer filter ──────────────────────────────────────────────────────
+
+  it('renders the Multiplayer toggle button', () => {
+    render(<LibraryControls {...defaultProps} />);
+    expect(screen.getByRole('button', { name: /multiplayer/i })).toBeInTheDocument();
+  });
+
+  it('Multiplayer toggle has aria-pressed=false when multiplayer prop is false (default)', () => {
+    render(<LibraryControls {...defaultProps} multiplayer={false} />);
+    expect(screen.getByRole('button', { name: /multiplayer/i })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
+  it('Multiplayer toggle has aria-pressed=true when multiplayer prop is true', () => {
+    render(<LibraryControls {...defaultProps} multiplayer={true} />);
+    expect(screen.getByRole('button', { name: /multiplayer/i })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
+  it('clicking Multiplayer toggle when inactive calls router.replace with multiplayer=1', () => {
+    mockReplace.mockClear();
+    render(<LibraryControls {...defaultProps} multiplayer={false} />);
+    fireEvent.click(screen.getByRole('button', { name: /multiplayer/i }));
+    expect(mockReplace).toHaveBeenCalledTimes(1);
+    const calledUrl = mockReplace.mock.calls[0]?.[0] as string;
+    expect(calledUrl).toContain('multiplayer=1');
+  });
+
+  it('clicking Multiplayer toggle when active calls router.replace without multiplayer param', () => {
+    mockReplace.mockClear();
+    render(<LibraryControls {...defaultProps} multiplayer={true} />);
+    fireEvent.click(screen.getByRole('button', { name: /multiplayer/i }));
+    expect(mockReplace).toHaveBeenCalledTimes(1);
+    const calledUrl = mockReplace.mock.calls[0]?.[0] as string;
+    expect(calledUrl).not.toContain('multiplayer');
+  });
+
+  it('does NOT show the uncategorized note when multiplayer is false', () => {
+    render(<LibraryControls {...defaultProps} multiplayer={false} uncategorizedCount={5} />);
+    expect(screen.queryByText(/some games could not be categorized/i)).not.toBeInTheDocument();
+  });
+
+  it('does NOT show the uncategorized note when multiplayer is true but uncategorizedCount is 0', () => {
+    render(<LibraryControls {...defaultProps} multiplayer={true} uncategorizedCount={0} />);
+    expect(screen.queryByText(/some games could not be categorized/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the uncategorized note when multiplayer is true and uncategorizedCount > 0', () => {
+    render(<LibraryControls {...defaultProps} multiplayer={true} uncategorizedCount={3} />);
+    expect(screen.getByText(/some games could not be categorized/i)).toBeInTheDocument();
   });
 });

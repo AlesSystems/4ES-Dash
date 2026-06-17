@@ -15,6 +15,7 @@ const META: StoreMetadata = {
   headerImage: 'https://cdn.akamai.steamstatic.com/steam/apps/620/header.jpg',
   genres: ['Action', 'Puzzle'],
   categories: ['Single-player', 'Multi-player'],
+  categoryIds: [2, 1],
   developers: ['Valve'],
   publishers: ['Valve'],
   releaseDate: '18 Apr, 2011',

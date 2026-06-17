@@ -25,7 +25,13 @@ export interface StoreMetadata {
   shortDescription: string;
   headerImage: string;
   genres: string[];
+  /** Human-readable category descriptions (e.g. "Multi-player", "Co-op"). */
   categories: string[];
+  /**
+   * Numeric Steam category IDs. Notable multiplayer-relevant IDs:
+   *   1 = Multi-player, 9 = Co-op, 27 = Cross-Platform Multiplayer.
+   */
+  categoryIds: number[];
   developers: string[];
   publishers: string[];
   releaseDate: string | null;
@@ -201,6 +207,7 @@ export async function getStoreMetadata(appId: number): Promise<Availability<Stor
     headerImage: data.header_image ?? '',
     genres: (data.genres ?? []).map((g) => g.description),
     categories: (data.categories ?? []).map((c) => c.description),
+    categoryIds: (data.categories ?? []).map((c) => Number(c.id)).filter((n) => Number.isFinite(n)),
     developers: data.developers ?? [],
     publishers: data.publishers ?? [],
     releaseDate: data.release_date?.date ?? null,
