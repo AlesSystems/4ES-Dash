@@ -76,6 +76,10 @@ The `getFriends()` repository function:
 
 Private friend-list handling: if `getFriendList` throws `SteamApiError({ kind: 'private' })` it propagates untouched; `withErrorBoundary` maps it to a 403 RFC 7807 response (`steam-private-profile`).
 
+### Compare two users (`repositories/compare.ts`, #31)
+
+`getComparison(aId, bId)` powers the RSC-only `/compare?a=&b=` page (no public API route). For each side it fetches the player summary and owned games through the **same** cache keys as the dashboard (`cacheKey('player-summaries', id)` / `cacheKey('owned-games', id)`, TTLs `playerSummaries` / `ownedGames`), so the configured user's data is shared, not refetched. Each side degrades independently: a private library sets `isPrivate: true` with null counts; a failed summary sets `profile: null`. Shared games are computed (`lib/compare/computeSharedGames`, inner-join by `appId`, sorted by `|playtime delta|` desc) only when both libraries are available and `aId !== bId`; otherwise `shared` is `null` with `sharedSkipped` set to `'same-user'` or `'unavailable'`. The function never throws for private/unavailable input — the page renders designed states from the returned flags. The page defaults side A to `env.STEAM_ID` when `?a=` is absent (forward-compatible with the Phase 6 session user).
+
 ### Graceful degradation — `Availability<T>` (`lib/result.ts`)
 
 T2/T4 features that Steam may not expose return `Availability<T>` instead of throwing:
