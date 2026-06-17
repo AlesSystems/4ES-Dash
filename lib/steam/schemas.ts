@@ -15,6 +15,9 @@ const RawPlayerSchema = z.object({
   loccountrycode: z.string().optional(),
   personastate: z.number().optional(),
   communityvisibilitystate: z.number().optional(),
+  // Present only when the player is in a game and their status is public.
+  gameextrainfo: z.string().optional(),
+  gameid: z.string().optional(),
 });
 
 export const RawPlayerSummaries = z.object({
@@ -76,3 +79,46 @@ export const OwnedGameSchema = z.object({
 });
 
 export type OwnedGame = z.infer<typeof OwnedGameSchema>;
+
+// ---------------------------------------------------------------------------
+// Friends (Phase 3, #30/#33)
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalised friend online status. Steam's `personastate` collapses to three
+ * buckets the UI cares about (ACCEPTANCE: Online / Away / Offline):
+ *   0 → 'offline'
+ *   1, 5 (looking to trade), 6 (looking to play) → 'online'
+ *   2 (busy), 3 (away), 4 (snooze) → 'away'
+ * A player with a hidden/private profile reports 0 → treated as 'offline'.
+ */
+export type FriendStatus = 'online' | 'away' | 'offline';
+
+export const FriendSummarySchema = z.object({
+  steamId: z.string(),
+  personaName: z.string(),
+  avatar: z.object({
+    small: z.string(),
+    medium: z.string(),
+    full: z.string(),
+  }),
+  profileUrl: z.string(),
+  status: z.enum(['online', 'away', 'offline']),
+  /** True when `playing` is non-null — convenience flag for the "Now playing" group. */
+  inGame: z.boolean(),
+  /**
+   * The game the friend is currently in, when their status is public.
+   * `appId` is null when Steam reports a non-Steam game (gameextrainfo without
+   * a numeric gameid). Null overall when the friend is not in a game.
+   */
+  playing: z
+    .object({
+      appId: z.number().nullable(),
+      name: z.string(),
+    })
+    .nullable(),
+  /** ISO-8601 UTC string from GetFriendList `friend_since`, or null if absent. */
+  friendSince: z.string().nullable(),
+});
+
+export type FriendSummary = z.infer<typeof FriendSummarySchema>;

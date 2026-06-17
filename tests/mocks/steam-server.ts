@@ -8,6 +8,7 @@ import playerAchievementsFixture from '../fixtures/steam/player-achievements.jso
 import schemaForGameFixture from '../fixtures/steam/schema-for-game.json';
 import globalPercentagesFixture from '../fixtures/steam/global-achievement-percentages.json';
 import appDetailsFixture from '../fixtures/steam/appdetails.json';
+import friendListFixture from '../fixtures/steam/friend-list.json';
 
 // ---------------------------------------------------------------------------
 // Default happy-path handlers
@@ -45,6 +46,10 @@ export const handlers = [
   // Undocumented Store JSON API (different host, no API key).
   http.get('https://store.steampowered.com/api/appdetails', () =>
     HttpResponse.json(appDetailsFixture),
+  ),
+
+  http.get('https://api.steampowered.com/ISteamUser/GetFriendList/v0001/', () =>
+    HttpResponse.json(friendListFixture),
   ),
 ];
 

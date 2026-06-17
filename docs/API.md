@@ -215,13 +215,35 @@ Recently played (last 2 weeks).
     {
       "steamId": "76561198000000001",
       "personaName": "Friend",
-      "avatar": { "full": "https://..." },
+      "avatar": {
+        "small": "https://avatars.steamstatic.com/abc_small.jpg",
+        "medium": "https://avatars.steamstatic.com/abc_medium.jpg",
+        "full": "https://avatars.steamstatic.com/abc_full.jpg"
+      },
+      "profileUrl": "https://steamcommunity.com/id/friend/",
       "status": "online",
-      "playing": { "appId": 730, "name": "Counter-Strike 2" }
+      "inGame": true,
+      "playing": { "appId": 730, "name": "Counter-Strike 2" },
+      "friendSince": "2020-09-13T12:26:40.000Z"
     }
   ]
 }
 ```
+
+Sorted: non-offline friends (online + away) first, offline last; within each group alphabetically by `personaName`.
+
+`friendSince` is an ISO-8601 UTC string when Steam reports a non-zero `friend_since` epoch, or `null` otherwise.
+
+`playing` is `null` when the friend is not in a game. `appId` inside `playing` is `null` for non-Steam games.
+
+**Errors this endpoint can return**
+
+| `type` slug             | HTTP | When                                         |
+| ----------------------- | ---- | -------------------------------------------- |
+| `steam-private-profile` | 403  | Friend list is not public                    |
+| `steam-auth`            | 401  | Bad or missing Steam API key                 |
+| `steam-transient`       | 502  | Steam API temporarily unavailable after retries |
+| `validation`            | 400  | Response failed Zod schema check             |
 
 ### `GET /api/stats/summary`
 

@@ -58,6 +58,24 @@ Endpoints added in Phase 1 (each Zod-parsed, rate-limited, cached via `server/re
 | `getGlobalAchievementPercentages`   | `GetGlobalAchievementPercentagesForApp/v2`  | `repositories/achievements.ts`      | `playerAchievements`  |
 | `getStoreMetadata` / `getStorePrice`| Store `appdetails` (undocumented)           | `repositories/store.ts`             | `storeMetadata` 7 d / `storePrice` 1 h |
 
+## Phase 3 data layer
+
+Endpoints added in Phase 3 (Friends):
+
+| Function (`lib/steam/friends`)                       | Steam endpoint                          | Repository                       | TTL (`ttl.ts`)            |
+| ---------------------------------------------------- | --------------------------------------- | -------------------------------- | ------------------------- |
+| `getFriendList`                                      | `ISteamUser/GetFriendList/v0001`        | `repositories/friends.ts`        | `friendList` 24 h         |
+| `getPlayerSummariesBatch` (friend summaries)         | `ISteamUser/GetPlayerSummaries/v2`      | `repositories/friends.ts`        | `playerSummaries` 5 m     |
+
+The `getFriends()` repository function:
+1. Fetches the owner's friend list (steamIds + `friendSince` timestamps) via `getFriendList`, cached for 24 h.
+2. Fetches enriched player summaries for all friend IDs in one batch call to `getPlayerSummariesBatch`, cached for 5 min.
+3. Overlays `friendSince` from the friend-list onto each `FriendSummary` (the batch call returns `friendSince: null`).
+4. Sorts the merged list via `sortFriends` (non-offline first, then alphabetical by `personaName` within each group).
+5. Returns `{ friends, stale }` — `stale` is ORed across both cached results.
+
+Private friend-list handling: if `getFriendList` throws `SteamApiError({ kind: 'private' })` it propagates untouched; `withErrorBoundary` maps it to a 403 RFC 7807 response (`steam-private-profile`).
+
 ### Graceful degradation — `Availability<T>` (`lib/result.ts`)
 
 T2/T4 features that Steam may not expose return `Availability<T>` instead of throwing:
