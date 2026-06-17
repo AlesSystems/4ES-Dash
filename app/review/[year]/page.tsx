@@ -40,9 +40,13 @@ export default async function YearInReviewPage({ params }: ReviewPageProps) {
     getYearInReview(year),
   ]);
 
-  // Year not in available list OR nothing happened that year
+  // Year not in available list OR nothing happened that year (no playtime, no
+  // top games, AND no achievements — an achievements-only year is NOT empty).
   const isEmpty =
-    !availableYears.includes(year) || (review.totalMinutes === 0 && review.topGames.length === 0);
+    !availableYears.includes(year) ||
+    (review.totalMinutes === 0 &&
+      review.topGames.length === 0 &&
+      review.achievementsUnlocked === 0);
 
   // Compute prev/next from the sorted list (descending)
   const sorted = [...availableYears].sort((a, b) => b - a);

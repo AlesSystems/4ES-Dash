@@ -1,8 +1,13 @@
 /**
  * Cost-per-hour repository (Phase 4, issue #36).
  *
- * Ranks the user's paid games by cost-per-hour using manual price-paid data
- * (when available) or current store price as fallback.
+ * Ranks the user's paid games by cost-per-hour using the CURRENT Steam store
+ * price only. Per docs/ACCEPTANCE.md §"Cost-per-hour ranking (current prices
+ * only)", the page must reflect current store prices — never price-paid — so
+ * the persistent disclaimer ("current store prices, not what you paid") stays
+ * accurate and no price-paid figure is surfaced here. Imported ManualGameData
+ * (#40) is captured/stored but intentionally NOT used as the price source for
+ * this ranking. (See PR #74 discussion: ACCEPTANCE.md #36 governs this page.)
  */
 
 import { prisma } from '@/server/db';
@@ -17,14 +22,9 @@ import {
 import { isAvailable } from '@/lib/result';
 
 /**
- * Computes cost-per-hour rankings for the user's owned games.
- *
- * Price resolution order per game:
- *   1. ManualGameData.pricePaidCents (user-supplied) → kind: 'paid'
- *   2. Store API current price → kind: 'free' | 'paid' | 'unavailable'
- *
- * When manual pricePaidCents is set but manual.currency is null, the store
- * price is fetched solely to retrieve the currency. Falls back to 'USD'.
+ * Computes cost-per-hour rankings for the user's owned games from current
+ * store prices: unavailable → excluded; free/zero → listed separately; else
+ * paid with the store's finalCents + currency.
  */
 export async function getCostPerHour(
   steamId?: string,
@@ -38,19 +38,12 @@ export async function getCostPerHour(
 
   const appIds = ownedGames.map((g) => g.appId);
 
-  const [gameRecords, manualDataRecords] = await Promise.all([
-    prisma.game.findMany({
-      where: { appId: { in: appIds } },
-      select: { appId: true, name: true },
-    }),
-    prisma.manualGameData.findMany({
-      where: { steamId: id, appId: { in: appIds } },
-      select: { appId: true, pricePaidCents: true, currency: true },
-    }),
-  ]);
+  const gameRecords = await prisma.game.findMany({
+    where: { appId: { in: appIds } },
+    select: { appId: true, name: true },
+  });
 
   const names = new Map<number, string>(gameRecords.map((g) => [g.appId, g.name]));
-  const manualByAppId = new Map(manualDataRecords.map((m) => [m.appId, m]));
 
   let stale = false;
 
@@ -58,43 +51,23 @@ export async function getCostPerHour(
     ownedGames.map(async (game): Promise<CostInput> => {
       const { appId, playtimeForever } = game;
       const name = names.get(appId) ?? `App ${appId}`;
-      const manual = manualByAppId.get(appId);
 
       let price: CostPrice;
 
-      if (manual !== undefined && manual.pricePaidCents !== null) {
-        // Manual price-paid is set — determine currency
-        let currency: string;
-        if (manual.currency !== null) {
-          currency = manual.currency;
-        } else {
-          // Need to fetch store price just for the currency
-          const storePriceResult = await getGameStorePrice(appId);
-          if (isAvailable(storePriceResult)) {
-            if (storePriceResult.stale) stale = true;
-            currency = storePriceResult.data?.currency ?? 'USD';
-          } else {
-            currency = 'USD';
-          }
-        }
-        price = { kind: 'paid', cents: manual.pricePaidCents, currency };
+      const storePriceResult = await getGameStorePrice(appId);
+      if (!isAvailable(storePriceResult)) {
+        price = { kind: 'unavailable' };
       } else {
-        // No manual price — use store price
-        const storePriceResult = await getGameStorePrice(appId);
-        if (!isAvailable(storePriceResult)) {
-          price = { kind: 'unavailable' };
+        if (storePriceResult.stale) stale = true;
+        const storePrice = storePriceResult.data;
+        if (storePrice === null || storePrice.finalCents === 0) {
+          price = { kind: 'free' };
         } else {
-          if (storePriceResult.stale) stale = true;
-          const storePrice = storePriceResult.data;
-          if (storePrice === null || storePrice.finalCents === 0) {
-            price = { kind: 'free' };
-          } else {
-            price = {
-              kind: 'paid',
-              cents: storePrice.finalCents,
-              currency: storePrice.currency,
-            };
-          }
+          price = {
+            kind: 'paid',
+            cents: storePrice.finalCents,
+            currency: storePrice.currency,
+          };
         }
       }
 
