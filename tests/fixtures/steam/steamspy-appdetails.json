@@ -1,0 +1,15 @@
+{
+  "appid": 620,
+  "name": "Portal 2",
+  "developer": "Valve",
+  "publisher": "Valve",
+  "owners": "10,000,000 .. 20,000,000",
+  "genre": "Action, Puzzle",
+  "tags": {
+    "Puzzle": 5432,
+    "Co-op": 4100,
+    "First-Person": 3800,
+    "Sci-fi": 2200,
+    "Singleplayer": 1900
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "found": true,
+  "game": {
+    "id": "018d937f-590c-714b-8b46-4dc799061a9a",
+    "slug": "portal-2",
+    "title": "Portal 2",
+    "type": "game",
+    "mature": false,
+    "assets": {
+      "banner145": "https://cdn.isthereanydeal.com/games/portal2/banner145.jpg",
+      "banner300": "https://cdn.isthereanydeal.com/games/portal2/banner300.jpg"
+    }
+  }
+}

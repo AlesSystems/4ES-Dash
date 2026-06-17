@@ -38,3 +38,5 @@ export {
   personaStateToStatus,
   sortFriends,
 } from './friends';
+export { getSteamSpyData, type SteamSpyData, type SteamSpyTag } from './steamspy-client';
+export { getItadHistoricalLow, type ItadHistoricalLow } from './itad-client';

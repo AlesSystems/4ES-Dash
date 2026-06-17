@@ -9,6 +9,9 @@ import schemaForGameFixture from '../fixtures/steam/schema-for-game.json';
 import globalPercentagesFixture from '../fixtures/steam/global-achievement-percentages.json';
 import appDetailsFixture from '../fixtures/steam/appdetails.json';
 import friendListFixture from '../fixtures/steam/friend-list.json';
+import steamspyAppdetailsFixture from '../fixtures/steam/steamspy-appdetails.json';
+import itadLookupFixture from '../fixtures/steam/itad-lookup.json';
+import itadStorelowFixture from '../fixtures/steam/itad-storelow.json';
 
 // ---------------------------------------------------------------------------
 // Default happy-path handlers
@@ -50,6 +53,17 @@ export const handlers = [
 
   http.get('https://api.steampowered.com/ISteamUser/GetFriendList/v0001/', () =>
     HttpResponse.json(friendListFixture),
+  ),
+
+  // SteamSpy enrichment API (T2, opt-in, no API key).
+  http.get('https://steamspy.com/api.php', () => HttpResponse.json(steamspyAppdetailsFixture)),
+
+  // IsThereAnyDeal enrichment API (T2, opt-in, requires API key).
+  http.get('https://api.isthereanydeal.com/games/lookup/v1', () =>
+    HttpResponse.json(itadLookupFixture),
+  ),
+  http.post('https://api.isthereanydeal.com/games/storelow/v2', () =>
+    HttpResponse.json(itadStorelowFixture),
   ),
 ];
 

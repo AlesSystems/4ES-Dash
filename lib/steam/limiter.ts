@@ -83,3 +83,10 @@ export class TokenBucketLimiter {
 
 /** Shared singleton for the Steam Web API (1 req / 250 ms). */
 export const steamLimiter = new TokenBucketLimiter(1, REFILL_INTERVAL_MS);
+
+/**
+ * Dedicated limiter for SteamSpy's appdetails endpoint, which asks for
+ * ≤ 1 req/sec — slower than the Steam Web API. The shared `steamLimiter`
+ * (4 req/sec) would not honour SteamSpy's policy, so SteamSpy calls use this.
+ */
+export const steamSpyLimiter = new TokenBucketLimiter(1, 1000);

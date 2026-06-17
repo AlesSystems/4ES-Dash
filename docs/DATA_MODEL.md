@@ -106,6 +106,28 @@ model AchievementSnapshot {
   @@id([steamId, appId, date])
 }
 
+model ManualGameData {
+  steamId        String
+  appId          Int
+  pricePaidCents Int?      // what the user actually paid, in minor units
+  currency       String?   // ISO 4217 of pricePaidCents (e.g. "USD")
+  acquiredAt     DateTime? // real acquisition date supplied by the user
+  importedAt     DateTime  @default(now())
+
+  @@id([steamId, appId])
+}
+
+model IdleDismissal {
+  steamId     String
+  appId       Int
+  fromDate    DateTime
+  toDate      DateTime
+  dismissedAt DateTime @default(now())
+
+  @@id([steamId, appId, fromDate, toDate])
+  @@index([steamId, appId])
+}
+
 model JobRun {
   id        String   @id @default(cuid())
   name      String
@@ -125,6 +147,8 @@ model JobRun {
 - **Genres as JSON for now.** A separate `GameGenre` join table is the right move once we filter by genre, but we ship JSON to keep migrations cheap until then.
 - **Achievement snapshots store counts only.** Per-achievement timestamps already live on `GetPlayerAchievements`; we re-fetch on demand for the detail view and don't archive them.
 - **`acquiredAt` is inferred, not sourced.** The official Steam Web API (`GetOwnedGames`) does not return when a game was added to the library. `acquiredAt` is populated the first time the game appears in a nightly snapshot run. Games that existed in the library before snapshotting started will have `acquiredAt = null`.
+- **`ManualGameData` is separate from `OwnedGame` by design.** User-supplied price-paid and acquisition data (#40) live in their own table so the inferred `OwnedGame.acquiredAt` (first-snapshot date) is never silently overwritten by an import. Cost-per-hour logic prefers the real `pricePaidCents` when present, falling back to current store price. `pricePaidCents` is in minor units (e.g. cents for USD); `currency` is ISO 4217.
+- **`IdleDismissal` is keyed by the exact spike window (#37).** The composite PK is `(steamId, appId, fromDate, toDate)`. This means dismissing one idle-detection flag for a specific playtime spike window never suppresses a _different_ spike (different window) on the same game — each new anomaly surfaces independently. The `@@index([steamId, appId])` speeds up the common lookup: "are any dismissals recorded for this game?"
 
 ## Derived queries
 
@@ -136,6 +160,7 @@ model JobRun {
 
 - Migrations are written via `prisma migrate dev` and committed with the PR that needs them.
 - Once merged to `main`, migrations are immutable. To fix a mistake, write a follow-up migration.
+- **Phase 4 migration** (`prisma/migrations/20260617101604_phase4_insights/`) added `ManualGameData` and `IdleDismissal`. This migration is immutable.
 - Destructive migrations (DROP, type change) require an explicit note in the PR description and a backup step in the deploy runbook.
 - **Pinned to Prisma 6.x** (`prisma-client-js` generator). Prisma 7 mandates the new `prisma-client` generator with a required custom output path and driver adapters — deferred to keep the foundation low-risk. See `docs/ERROR.md` (ERR-0004).
 - **Committed migrations are SQLite-authored** (dev + CI). Production Postgres is provisioned with `prisma db push` (schema-driven, no migration replay), because a single SQLite migration history cannot replay on Postgres. The schema is kept Postgres-compatible (no SQLite-only types, JSON stored as `String`). See `docs/DEPLOYMENT.md`.

@@ -16,6 +16,15 @@ const EnvSchema = z.object({
   REDIS_URL: z.string().url().optional(),
   // Required in Phase 2+ (cron routes); optional during Phase 0–1 so dev needs no cron setup.
   CRON_SECRET: z.string().min(1).optional(),
+  // Phase 4 free, opt-in enrichment. Both default OFF — no behaviour change and
+  // no extra outbound calls unless the self-hoster explicitly turns them on.
+  // SteamSpy (#38): set to '1' or 'true' to enable genre/tag/ownership enrichment.
+  ENABLE_STEAMSPY: z
+    .enum(['0', '1', 'true', 'false'])
+    .optional()
+    .transform((v) => v === '1' || v === 'true'),
+  // IsThereAnyDeal (#39): historical-low price client is disabled unless a key is set.
+  ITAD_API_KEY: z.string().min(1).optional(),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 });
 

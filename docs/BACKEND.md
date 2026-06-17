@@ -91,6 +91,29 @@ silent zero. Store API failures (network/non-200/`success:false`/bad shape) degr
 with no achievement schema → `unavailable('no-achievements')`. See
 [docs/STEAM_DATA_SOURCES.md](STEAM_DATA_SOURCES.md#data-availability--degradation-strategy).
 
+## Phase 4 data layer
+
+New in Phase 4 (Insights):
+
+| Client module | Service | Gated by | Rate discipline | TTL key | Supplements |
+| ----------------------------- | ------------------- | -------------------- | --------------- | ------------ | ----------------------------- |
+| `lib/steam/steamspy-client.ts` | SteamSpy (free) | `ENABLE_STEAMSPY=1` | ≤ 1 req/sec | `steamSpy` | Genres, tags, ownership bands |
+| `lib/steam/itad-client.ts` | IsThereAnyDeal v2 (free key) | `ITAD_API_KEY` set | Per-key quota | `itadPrice` | Historical-low price |
+
+Both clients follow the **store-client T2 pattern**: custom `User-Agent` header, no Steam API key, never throw (degrade to `unavailable('metadata-unavailable')` on any failure). If the controlling env var is absent the client is not called and the feature degrades immediately.
+
+Two new TTL constants were added to `server/cache/ttl.ts`:
+
+| Key | Value | Rationale |
+| ----------- | --------- | -------------------------------------------- |
+| `steamSpy` | `86400` s | Matches SteamSpy's requested ≥ 24 h cache policy |
+| `itadPrice` | `86400` s | Historical-low data changes slowly; 24 h is safe |
+
+Two new Prisma models added in migration `prisma/migrations/20260617101604_phase4_insights/`:
+
+- **`ManualGameData`** — user-supplied `pricePaidCents` (minor currency units) + `currency` (ISO 4217) + `acquiredAt` for T4 gaps that no API exposes. PK `(steamId, appId)`. Separate from `OwnedGame` to preserve the inferred `acquiredAt` (first-snapshot date).
+- **`IdleDismissal`** — records dismissed idle-detection spikes. PK `(steamId, appId, fromDate, toDate)`; the window-scoped key ensures a new anomaly on the same game resurfaces rather than being permanently suppressed. `@@index([steamId, appId])` for fast per-game lookups.
+
 ## Caching
 
 `server/cache.ts` exposes a `cache<T>(key, ttl, loader)` helper.
@@ -151,14 +174,16 @@ with no achievement schema → `unavailable('no-achievements')`. See
 - All config is via env vars; loaded once through `server/env.ts`, which Zod-parses `process.env` at boot. Misconfiguration crashes the process immediately.
 - `.env.example` enumerates every variable with a comment.
 
-| Var               | Required | Notes                                |
-| ----------------- | -------- | ------------------------------------ |
-| `STEAM_API_KEY`   | yes      | https://steamcommunity.com/dev/apikey |
-| `STEAM_ID`        | yes (v1) | 17-digit 64-bit Steam ID             |
-| `DATABASE_URL`    | yes      | Prisma connection string             |
-| `REDIS_URL`       | no       | Falls back to in-memory cache        |
-| `CRON_SECRET`     | yes      | Shared secret for `/api/jobs/*`      |
-| `NEXTAUTH_SECRET` | v2+      | NextAuth session secret              |
+| Var                | Required | Notes                                |
+| ------------------ | -------- | ------------------------------------ |
+| `STEAM_API_KEY`    | yes      | https://steamcommunity.com/dev/apikey |
+| `STEAM_ID`         | yes (v1) | 17-digit 64-bit Steam ID             |
+| `DATABASE_URL`     | yes      | Prisma connection string             |
+| `REDIS_URL`        | no       | Falls back to in-memory cache        |
+| `CRON_SECRET`      | yes      | Shared secret for `/api/jobs/*`      |
+| `NEXTAUTH_SECRET`  | v2+      | NextAuth session secret              |
+| `ENABLE_STEAMSPY`  | no       | Phase 4 opt-in (#38). Set to `1` or `true` to enable SteamSpy genre/tag/ownership enrichment. Off by default — enabling adds outbound calls to `steamspy.com`. |
+| `ITAD_API_KEY`     | no       | Phase 4 opt-in (#39). Free API key from IsThereAnyDeal. Enables historical-low price client. Disabled (and no calls made) when unset. |
 
 ## Security
 

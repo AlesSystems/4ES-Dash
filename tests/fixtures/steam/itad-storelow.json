@@ -1,0 +1,43 @@
+[
+  {
+    "id": "018d937f-590c-714b-8b46-4dc799061a9a",
+    "storelow": [
+      {
+        "shop": {
+          "id": 61,
+          "name": "Humble Store"
+        },
+        "price": {
+          "amount": 2.49,
+          "amountInt": 249,
+          "currency": "USD"
+        },
+        "regular": {
+          "amount": 9.99,
+          "amountInt": 999,
+          "currency": "USD"
+        },
+        "cut": 75,
+        "timestamp": "2023-11-22T18:00:00Z"
+      },
+      {
+        "shop": {
+          "id": 1,
+          "name": "Steam"
+        },
+        "price": {
+          "amount": 1.99,
+          "amountInt": 199,
+          "currency": "USD"
+        },
+        "regular": {
+          "amount": 9.99,
+          "amountInt": 999,
+          "currency": "USD"
+        },
+        "cut": 80,
+        "timestamp": "2022-06-30T17:00:00Z"
+      }
+    ]
+  }
+]
