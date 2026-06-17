@@ -5,7 +5,8 @@
  * Rules:
  *   - NEVER sends STEAM_API_KEY.
  *   - Sends a descriptive User-Agent header.
- *   - Rate-limited with steamLimiter.acquire() before each fetch.
+ *   - Rate-limited with steamSpyLimiter.acquire() (1 req/sec — SteamSpy's
+ *     stated policy, slower than the shared Steam Web API limiter).
  *   - Single attempt — best-effort; no withRetry.
  *   - All failures (network, non-200, bad shape) degrade to
  *     Availability<T> { available: false, reason: 'metadata-unavailable' }.
@@ -19,7 +20,7 @@
 
 import { z } from 'zod';
 import { available, unavailable, type Availability } from '@/lib/result';
-import { steamLimiter } from './limiter';
+import { steamSpyLimiter } from './limiter';
 
 // ---------------------------------------------------------------------------
 // Domain types (exported for consumers)
@@ -104,12 +105,12 @@ function parseGenres(raw: string | undefined): string[] {
 /**
  * Fetch SteamSpy enrichment for one app.
  * Degrades to unavailable('metadata-unavailable') on any failure.
- * Single attempt, rate-limited via steamLimiter.
+ * Single attempt, rate-limited via steamSpyLimiter (1 req/sec).
  */
 export async function getSteamSpyData(appId: number): Promise<Availability<SteamSpyData>> {
   const url = `${STEAMSPY_BASE_URL}?request=appdetails&appid=${appId}`;
 
-  await steamLimiter.acquire();
+  await steamSpyLimiter.acquire();
 
   let raw: unknown;
   try {

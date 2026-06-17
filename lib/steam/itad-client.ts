@@ -116,11 +116,14 @@ const USER_AGENT = '4ES-Dash/0.0.0 (+https://github.com/AlesSystems/4ES-Dash)';
 /**
  * Convert a storelow price entry to integer cents.
  * Uses amountInt (already minor-unit) if present, otherwise rounds amount * 100.
+ * Returns undefined when the entry carries neither field — callers must skip it
+ * rather than treat a missing price as a $0.00 historical low (which would win
+ * the min-price comparison and corrupt downstream cost-per-hour figures).
  */
-function toCents(price: z.infer<typeof RawPrice>): number {
+function toCents(price: z.infer<typeof RawPrice>): number | undefined {
   if (price.amountInt !== undefined) return price.amountInt;
   if (price.amount !== undefined) return Math.round(price.amount * 100);
-  return 0;
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -132,7 +135,9 @@ function toCents(price: z.infer<typeof RawPrice>): number {
  *
  * - `apiKey` is passed in by the (server-side) repository; never read from env here.
  * - Degrades to `unavailable('metadata-unavailable')` on any failure.
- * - Single attempt, rate-limited.
+ * - Two HTTP round-trips per call (lookup → storelow), each acquires a token
+ *   from the shared steamLimiter; ITAD's per-key quota is mitigated by the 24h
+ *   cache (TTL.itadPrice) in the repository, not by this limiter.
  */
 export async function getItadHistoricalLow(
   appId: number,
@@ -234,6 +239,7 @@ export async function getItadHistoricalLow(
   for (const entry of item.storelow) {
     if (entry.price === undefined) continue;
     const cents = toCents(entry.price);
+    if (cents === undefined) continue; // skip price-less entries; never treat as 0
     if (cents < lowestCents) {
       lowestCents = cents;
       lowestEntry = entry;

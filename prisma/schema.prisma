@@ -108,6 +108,7 @@ model AchievementSnapshot {
 // real price-paid over current store price when present. (steamId, appId) is
 // the natural unique key.
 model ManualGameData {
+  // No FK to OwnedGame by design — an import may precede the first snapshot run.
   steamId        String
   appId          Int
   pricePaidCents Int? // what the user actually paid, in minor units
