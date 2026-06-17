@@ -265,6 +265,67 @@ Aggregates for the dashboard hero.
 }
 ```
 
+### `POST /api/import`
+
+Imports user-supplied game price and acquisition data that Steam never exposes. Idempotent — re-importing the same rows overwrites with the same values; the DB record count stays at 1 per `(steamId, appId)`.
+
+Accepts two content types:
+
+- `application/json` — body must be `{ "rows": [...] }`
+- `text/csv` — `Content-Type: text/csv`. First row is a header; valid columns: `appId`, `pricePaidCents`, `currency`, `acquiredAt`. Empty cells are treated as absent (i.e. the field stays `null`).
+
+**Request — JSON**
+
+```json
+{
+  "rows": [
+    {
+      "appId": 730,
+      "pricePaidCents": 2499,
+      "currency": "USD",
+      "acquiredAt": "2021-03-15T00:00:00.000Z"
+    },
+    {
+      "appId": 570
+    }
+  ]
+}
+```
+
+**Request — CSV**
+
+```csv
+appId,pricePaidCents,currency,acquiredAt
+730,2499,USD,2021-03-15T00:00:00.000Z
+570,,,
+```
+
+**Validation**
+
+| Field           | Type              | Constraints                                                |
+| --------------- | ----------------- | ---------------------------------------------------------- |
+| `appId`         | integer           | Required, positive                                         |
+| `pricePaidCents`| integer           | Optional, non-negative (minor currency units, e.g. cents) |
+| `currency`      | string (ISO 4217) | Optional, exactly 3 characters                             |
+| `acquiredAt`    | string (ISO 8601) | Optional, full datetime string                             |
+
+`rows` array: minimum 1, maximum 5 000 rows per request.
+
+**Response 200**
+
+```json
+{ "imported": 2 }
+```
+
+`imported` equals `rows.length` — every row is counted once regardless of whether it was inserted or updated.
+
+**Errors this endpoint can return**
+
+| `type` slug  | HTTP | When                                                         |
+| ------------ | ---- | ------------------------------------------------------------ |
+| `validation` | 400  | `rows` is empty, missing, or contains invalid field values   |
+| `internal`   | 500  | Unexpected error during the DB transaction                   |
+
 ### `POST /api/cron/snapshot`
 
 Cron-only. Snapshots playtime (and a bounded set of achievement-unlock counts) for the configured user. Idempotent — safe to retry; a second call on the same UTC day inserts no new rows.

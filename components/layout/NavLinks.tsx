@@ -8,11 +8,15 @@ interface NavItem {
   href: string;
 }
 
+const CURRENT_YEAR = new Date().getUTCFullYear();
+
 const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', href: '/' },
   { label: 'Library', href: '/library' },
   { label: 'History', href: '/history' },
   { label: 'Friends', href: '/friends' },
+  { label: 'Insights', href: '/insights/genres' },
+  { label: 'Year in Review', href: `/review/${CURRENT_YEAR}` },
 ];
 
 export function NavLinks(): JSX.Element {
