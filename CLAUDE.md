@@ -173,12 +173,6 @@ Hard-won conventions (these bit during Phase 0):
 
 - Be concise and clear when providing information to user about implementation or error faced.
 - Do not create documents in base directory.
-- For complex tasks, use sub-agents to implement the tasks parallel with accuracy.
-- For sub-agents, use sonnet 4.6 as a default agent if not another model specifically mentioned.
-- Do not get confused if there are different changes on different modules. Team is working in this team so agents work on different modules at the same time simultaneously.
-- If you see sudden changes in the codebase, do not revert as different agents are running paralelly for same or different modules at the same time. 
-- On Windows/PowerShell, do not use Bash heredocs (`<<EOF`); pipe PowerShell here-strings to the target command or use `-c`.
-- Documentation Rule: Whenever you create or modify a file(s) in src/db, add or change a server action, or alter a core route, you MUST proactively open the corresponding markdown file in the docs/ directory and update it to reflect your changes. Do not wait for me to ask.
 
 ## When completing tasks:
 
