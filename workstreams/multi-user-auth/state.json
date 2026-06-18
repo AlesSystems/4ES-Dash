@@ -10,10 +10,10 @@
       "title": "ADR: multi-tenancy + Steam OpenID auth",
       "issue": 59,
       "file": "03-tasks/01-adr-multi-tenant-auth.md",
-      "status": "in-review",
+      "status": "done",
       "owner": "implementer-sonnet",
       "tests": [],
-      "verdict": null,
+      "verdict": "APPROVE",
       "notes": "Tier 0. Source of truth; locks session strategy + privacy default for tasks 02/03. Docs-only."
     },
     {
@@ -21,10 +21,10 @@
       "title": "next-auth + Steam OpenID provider",
       "issue": 60,
       "file": "03-tasks/02-nextauth-steam-openid.md",
-      "status": "in-review",
+      "status": "done",
       "owner": "implementer-sonnet",
       "tests": ["tests/unit/auth.test.ts"],
-      "verdict": null,
+      "verdict": "APPROVE",
       "notes": "Tier 1. Depends on 01 (session strategy). Establishes session.user.steamId; blocks 04/05/06/07. FIXED (reviewer blockers): replaced broken type:oauth provider with next-auth-steam; added verifySteamOpenId (direct fetch check_authentication POST); route handler updated to per-request buildAuthOptions(req) pattern. Security regression: 4 tests in verifySteamOpenId suite covering is_valid:true acceptance, is_valid:false rejection, domain forgery rejection, and HTTP error handling."
     },
     {
@@ -32,10 +32,10 @@
       "title": "Prisma — next-auth tables + per-user identity",
       "issue": 61,
       "file": "03-tasks/03-prisma-auth-identity.md",
-      "status": "in-review",
+      "status": "done",
       "owner": "implementer-sonnet",
       "tests": [],
-      "verdict": null,
+      "verdict": "APPROVE",
       "notes": "Privacy enum (public/friendsOnly/private) + User fields (lastLoginAt, privacy @default(private), onboardedAt). Migration: 20260618153917_multi_user_identity. No Account/Session/VerificationToken per ADR 0002 §2 (JWT sessions). Full gate green: 71 test files, 689 tests, tsc, lint, build all pass."
     },
     {
@@ -43,10 +43,10 @@
       "title": "session-scoped data layer (retire env.STEAM_ID)",
       "issue": 62,
       "file": "03-tasks/04-session-scoped-data-layer.md",
-      "status": "in-review",
+      "status": "done",
       "owner": "implementer-sonnet",
       "tests": ["tests/unit/repositories-isolation.test.ts"],
-      "verdict": null,
+      "verdict": "APPROVE",
       "notes": "Tier 2. Depends on 02+03. Riskiest refactor: ~12 files read env.STEAM_ID; two-SteamID isolation test required."
     },
     {
@@ -54,10 +54,10 @@
       "title": "route protection + data isolation (authz)",
       "issue": 63,
       "file": "03-tasks/05-route-protection-authz.md",
-      "status": "in-review",
+      "status": "done",
       "owner": "implementer-sonnet",
       "tests": ["tests/unit/authz.test.ts", "tests/unit/route-protection.test.ts", "tests/unit/idor.test.ts"],
-      "verdict": null,
+      "verdict": "APPROVE",
       "notes": "Tier 2. Depends on 02+04. IDOR test (user A cannot read user B) required."
     },
     {
@@ -65,10 +65,10 @@
       "title": "first-login onboarding backfill",
       "issue": 64,
       "file": "03-tasks/06-onboarding-backfill.md",
-      "status": "in-review",
+      "status": "done",
       "owner": "implementer-sonnet",
       "tests": ["tests/unit/onboarding-backfill.test.ts", "tests/unit/auth-events.test.ts"],
-      "verdict": null,
+      "verdict": "APPROVE",
       "notes": "Tier 3. Depends on 02+03+04. Must be idempotent + rate-limited; private profile -> locked state."
     },
     {
@@ -76,10 +76,10 @@
       "title": "auth UI — sign in/out + user menu + landing",
       "issue": 65,
       "file": "03-tasks/07-auth-ui.md",
-      "status": "in-review",
+      "status": "done",
       "owner": "implementer-sonnet",
       "tests": ["tests/unit/UserMenu.test.tsx"],
-      "verdict": null,
+      "verdict": "APPROVE",
       "notes": "Tier 3. Depends on 02. App bar is a merge point — serialize shell edits."
     },
     {
@@ -87,10 +87,10 @@
       "title": "privacy controls + account settings",
       "issue": 66,
       "file": "03-tasks/08-privacy-account-settings.md",
-      "status": "in-review",
+      "status": "done",
       "owner": "implementer-sonnet",
       "tests": ["tests/unit/account-settings.test.ts"],
-      "verdict": null,
+      "verdict": "APPROVE",
       "notes": "Tier 4. Depends on 03+05+06+07. Friends-only fails closed; delete removes all rows."
     },
     {
@@ -98,10 +98,10 @@
       "title": "multi-user security + docs pass",
       "issue": 67,
       "file": "03-tasks/09-docs-multi-user-pass.md",
-      "status": "in-review",
+      "status": "done",
       "owner": "implementer-sonnet",
       "tests": [],
-      "verdict": null,
+      "verdict": "APPROVE",
       "notes": "Tier 5. Docs-only. Updated: docs/SECURITY.md (threat model rewritten for multi-user, 10 threats with controls mapped to Tasks 02/05/08), ROADMAP.md (Phase 6 added as shipped, Steam OpenID removed from stretch goals), docs/ARCHITECTURE.md (auth layer + per-user data flow added, configured-user framing replaced with session-user model), README.md (NEXTAUTH_SECRET/NEXTAUTH_URL documented, STEAM_ID noted as optional fallback, sign-in flow explained), docs/ACCEPTANCE.md (Phase 6 section already existed — refined Prisma criterion to match ADR §2, fixed onboarding backfill criterion re: SQLite, updated #67 criterion to reference ROADMAP.md at root not docs/, added ADR cross-link). check:docs + lint + build all pass."
     }
   ]
