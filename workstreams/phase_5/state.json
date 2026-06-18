@@ -12,10 +12,14 @@
       "id": "01",
       "title": "Shared UI primitives (Skeleton, RouteError, RetryBoundary)",
       "file": "03-tasks/01-shared-primitives.md",
-      "status": "todo",
-      "owner": null,
+      "status": "in-review",
+      "owner": "implementer",
       "pr": "PR1",
-      "tests": [],
+      "tests": [
+        "tests/unit/components/skeleton.test.tsx",
+        "tests/unit/components/route-error.test.tsx",
+        "tests/unit/components/retry-boundary.test.tsx"
+      ],
       "verdict": null,
       "notes": "Tier-1 contract; runs first. Imported by 02/03/04."
     },
@@ -23,23 +27,27 @@
       "id": "02",
       "title": "Route & global error boundaries with retry",
       "file": "03-tasks/02-error-boundaries.md",
-      "status": "todo",
-      "owner": null,
+      "status": "in-review",
+      "owner": "implementer",
       "pr": "PR1",
-      "tests": [],
+      "tests": [
+        "tests/unit/app/error-boundaries.test.tsx"
+      ],
       "verdict": null,
-      "notes": "Depends on 01 (RouteError)."
+      "notes": "Depends on 01 (RouteError). 31 tests covering AC1, AC2, AC4, AC5 for all 9 boundaries."
     },
     {
       "id": "03",
       "title": "Section-level Suspense skeletons + CLS test",
       "file": "03-tasks/03-section-suspense.md",
-      "status": "todo",
-      "owner": null,
+      "status": "in-review",
+      "owner": "implementer",
       "pr": "PR1",
-      "tests": [],
+      "tests": [
+        "tests/unit/section-suspense-geometry.test.tsx"
+      ],
       "verdict": null,
-      "notes": "Depends on 01 (Skeleton). Runs after 02 (shared tree, tsc-gate)."
+      "notes": "Extracted GameAchievementsSection + GameStoreSection as async server subcomponents on game detail page. Fixed LibraryValueSkeleton to use Skeleton primitive. 11 geometry/CLS tests covering AC2, AC5."
     },
     {
       "id": "04",
