@@ -40,3 +40,4 @@ Files are named `NNNN-kebab-case-title.md`, zero-padded to four digits, sequenti
 | ADR | Title | Status | Date |
 | --- | --- | --- | --- |
 | [0001](0001-single-nextjs-deployment.md) | Single Next.js deployment, no separate backend | Accepted | 2026-06-14 |
+| [0002](0002-multi-tenant-steam-openid-auth.md) | Multi-tenant authentication with Steam OpenID | Accepted | 2026-06-18 |
