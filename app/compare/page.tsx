@@ -1,6 +1,6 @@
 import { isValidSteamId } from '@/lib/compare';
 import { getComparison } from '@/server/repositories/compare';
-import { getEnv } from '@/server/env';
+import { getSessionUser } from '@/server/auth';
 import { EmptyState } from '@/components/states/EmptyState';
 import { StaleBanner } from '@/components/states/StaleBanner';
 import { CompareHeader } from '@/components/compare/CompareHeader';
@@ -22,13 +22,23 @@ interface ComparePageProps {
   searchParams: { a?: string; b?: string };
 }
 
+/** Friendly display name for a side when the profile failed to load. */
+function friendlyName(steamId: string): string {
+  return `Player ${steamId.slice(-4)}`;
+}
+
 export default async function ComparePage({
   searchParams,
 }: ComparePageProps): Promise<JSX.Element> {
-  // Side A defaults to the configured user (forward-compatible with Phase 6 session user).
+  // Side A resolves from the session user — NEVER from env.STEAM_ID (placeholder).
+  // getSessionUser() returns null for anonymous visitors; we degrade to EmptyState
+  // rather than fetching a placeholder account.
+  const sessionUser = await getSessionUser();
+  const sessionSteamId = sessionUser?.steamId ?? null;
+
   // Trim here so the validated value and the value passed downstream (cache key +
   // Steam request) are identical — isValidSteamId trims internally too.
-  const aId = (searchParams.a ?? getEnv().STEAM_ID ?? '').trim();
+  const aId = (searchParams.a ?? sessionSteamId ?? '').trim();
   const bId = searchParams.b?.trim();
 
   // Validate IDs — show an input prompt instead of crashing.
@@ -50,8 +60,9 @@ export default async function ComparePage({
 
   const cmp = await getComparison(aId, bId);
 
-  const aName = cmp.a.profile?.personaName ?? cmp.a.steamId;
-  const bName = cmp.b.profile?.personaName ?? cmp.b.steamId;
+  // Friendly fallback: never render a raw 17-digit steamId as a display name.
+  const aName = cmp.a.profile?.personaName ?? friendlyName(cmp.a.steamId);
+  const bName = cmp.b.profile?.personaName ?? friendlyName(cmp.b.steamId);
 
   return (
     <main className={SHELL}>
