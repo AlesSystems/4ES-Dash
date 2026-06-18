@@ -11,13 +11,13 @@ User ──< OwnedGame >── Game ──< Achievement
                 └─< PlaytimeSnapshot
 ```
 
-## Prisma schema (target)
+## Prisma schema
 
 ```prisma
 // prisma/schema.prisma
 generator client {
   provider      = "prisma-client-js"
-  binaryTargets = ["native", "rhel-openssl-3.0.x"] // local/CI + Vercel serverless
+  binaryTargets = ["native", "rhel-openssl-3.0.x"] // local/CI + Linux self-host
 }
 
 datasource db {

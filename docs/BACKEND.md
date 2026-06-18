@@ -45,9 +45,9 @@ Rate limit notes for the Store API:
 | `appdetails` | ~200 req/5 min per IP | Batch ≤ 50 IDs, 500 ms between batches, 7-day cache |
 | `wishlistdata` | ~60 req/min | 1 req per cron run, 24-hour cache |
 
-## Phase 1 data layer
+## Data layer
 
-Endpoints added in Phase 1 (each Zod-parsed, rate-limited, cached via `server/repositories/*`):
+The following endpoints are Zod-parsed, rate-limited, and cached via `server/repositories/*`:
 
 | Function (`lib/steam`)              | Steam endpoint                              | Repository                          | TTL (`ttl.ts`)        |
 | ----------------------------------- | ------------------------------------------- | ----------------------------------- | --------------------- |
@@ -58,9 +58,9 @@ Endpoints added in Phase 1 (each Zod-parsed, rate-limited, cached via `server/re
 | `getGlobalAchievementPercentages`   | `GetGlobalAchievementPercentagesForApp/v2`  | `repositories/achievements.ts`      | `playerAchievements`  |
 | `getStoreMetadata` / `getStorePrice`| Store `appdetails` (undocumented)           | `repositories/store.ts`             | `storeMetadata` 7 d / `storePrice` 1 h |
 
-## Phase 3 data layer
+### Friends (Phase 3)
 
-Endpoints added in Phase 3 (Friends):
+Endpoints for the friends feature:
 
 | Function (`lib/steam/friends`)                       | Steam endpoint                          | Repository                       | TTL (`ttl.ts`)            |
 | ---------------------------------------------------- | --------------------------------------- | -------------------------------- | ------------------------- |
@@ -91,9 +91,9 @@ silent zero. Store API failures (network/non-200/`success:false`/bad shape) degr
 with no achievement schema → `unavailable('no-achievements')`. See
 [docs/STEAM_DATA_SOURCES.md](STEAM_DATA_SOURCES.md#data-availability--degradation-strategy).
 
-## Phase 4 data layer
+### Insights / enrichment (Phase 4)
 
-New in Phase 4 (Insights):
+Shipped in Phase 4:
 
 | Client module | Service | Gated by | Rate discipline | TTL key | Supplements |
 | ----------------------------- | ------------------- | -------------------- | --------------- | ------------ | ----------------------------- |
@@ -126,7 +126,7 @@ Two new Prisma models added in migration `prisma/migrations/20260617101604_phase
 
 ## Database
 
-- Prisma 6.x (`prisma-client-js`). SQLite for dev/CI, Postgres for prod (Vercel Postgres / Supabase / self-hosted).
+- Prisma 6.x (`prisma-client-js`). SQLite for dev/CI, Postgres for prod (Supabase / self-hosted Docker).
 - **`server/db.ts` exports the single `prisma` client** — a `globalThis`-guarded singleton so dev hot-reload
   doesn't leak connections. It is the only place that calls `new PrismaClient()`; repositories and jobs
   import `{ prisma } from '@/server/db'`.
@@ -167,7 +167,7 @@ Two new Prisma models added in migration `prisma/migrations/20260617101604_phase
 - `pino` for structured logs. One line per request: `{ method, path, status, ms, requestId }`.
 - Steam outbound calls log `{ endpoint, ms, cacheHit, retries }`.
 - Errors include a `requestId` propagated to the client for support.
-- `/api/health` returns DB + cache liveness for uptime probes.
+- Structured logs include `requestId` propagated to the client for support.
 
 ## Configuration
 
@@ -180,8 +180,7 @@ Two new Prisma models added in migration `prisma/migrations/20260617101604_phase
 | `STEAM_ID`         | yes (v1) | 17-digit 64-bit Steam ID             |
 | `DATABASE_URL`     | yes      | Prisma connection string             |
 | `REDIS_URL`        | no       | Falls back to in-memory cache        |
-| `CRON_SECRET`      | yes      | Shared secret for `/api/jobs/*`      |
-| `NEXTAUTH_SECRET`  | v2+      | NextAuth session secret              |
+| `CRON_SECRET`      | yes      | Shared secret for `/api/cron/*`      |
 | `ENABLE_STEAMSPY`  | no       | Phase 4 opt-in (#38). Set to `1` or `true` to enable SteamSpy genre/tag/ownership enrichment. Off by default — enabling adds outbound calls to `steamspy.com`. |
 | `ITAD_API_KEY`     | no       | Phase 4 opt-in (#39). Free API key from IsThereAnyDeal. Enables historical-low price client. Disabled (and no calls made) when unset. |
 

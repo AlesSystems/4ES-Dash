@@ -48,8 +48,8 @@ Two external data sources are used:
 | Data         | Prisma ORM + SQLite (dev) / Postgres (prod) | Type-safe queries, simple migrations     |
 | Cache        | Redis (prod) / in-memory LRU (dev)  | Rate-limit-friendly                              |
 | Validation   | Zod                                 | Parse-don't-validate at every boundary           |
-| Jobs         | `node-cron` (self-host) / Vercel Cron | Periodic snapshots                              |
-| Auth (v2)    | Steam OpenID via `next-auth`        | Steam-native identity                            |
+| Jobs         | `node-cron` (self-host)             | Periodic snapshots                              |
+| Auth (Phase 6+) | Steam OpenID via `next-auth`     | Steam-native identity (not yet shipped)          |
 | Testing      | Vitest + Playwright                 | Fast unit, real-browser e2e                      |
 
 ## Directory layout
@@ -127,14 +127,14 @@ See `docs/DATA_MODEL.md` for the schema.
 | `refresh:store-meta` | Weekly Sunday   | Re-pull store metadata for owned games           |
 | `cache:warm`         | Hourly          | Warm hot caches for the configured user          |
 
-In dev these run via `node-cron`. On Vercel they run via `vercel.json` cron triggers hitting protected route handlers.
+These run via `node-cron` in dev. In production, an external scheduler (e.g. a system cron or a hosted cron service) hits the protected route handlers with the `CRON_SECRET` header. Docker support (including a bundled cron sidecar) is planned but not yet shipped — see issue #44.
 
 ## Security model
 
 - The Steam API key is **server-only**. It is never serialized to the client. Route handlers and RSCs are the only callers.
 - Client components fetch from our own `/api/*` routes, never directly from Steam.
 - Cron route handlers require a shared secret header (`x-cron-secret`).
-- Multi-user (Phase 3+) uses Steam OpenID; we store only the 64-bit `steamid`.
+- Multi-user (Phase 6+) uses Steam OpenID; we store only the 64-bit `steamid`.
 - No PII beyond the Steam handle and avatar is persisted.
 
 ## Performance budget
@@ -153,9 +153,9 @@ In dev these run via `node-cron`. On Vercel they run via `vercel.json` cron trig
 
 ## Deployment topologies
 
-- **Local dev**: `pnpm dev`, SQLite file, in-memory cache.
-- **Self-hosted Docker**: single container + sidecar Redis + volume-mounted SQLite or external Postgres.
-- **Vercel**: serverless functions, Vercel KV for cache, Vercel Postgres.
+- **Local dev**: `pnpm dev`, SQLite file, in-memory LRU cache. This is the primary supported path.
+- **Self-hosted (Postgres + Redis)**: point `DATABASE_URL` at a Postgres instance and optionally set `REDIS_URL`; see `docs/DEPLOYMENT.md`.
+- **Docker**: planned (issue #44) — not yet available.
 
 ## Trade-offs taken
 

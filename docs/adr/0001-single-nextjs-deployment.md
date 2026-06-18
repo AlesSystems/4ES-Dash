@@ -14,7 +14,7 @@ The core product requirements at Phase 0 are:
 - Keep the Steam API key strictly server-side; never expose it to the browser.
 - Run periodic snapshot jobs (daily playtime, achievements) without a separate job runner host.
 - Support SQLite locally and Postgres in production without changing application code.
-- Stay deployable by a single developer with one `docker compose up` or one Vercel project.
+- Stay deployable by a single developer with minimal tooling (local dev via `pnpm dev`; Docker planned for issue #44).
 
 ## Decision
 

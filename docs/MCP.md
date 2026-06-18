@@ -41,7 +41,6 @@ feature.
 |-----------------------------------------|------------------------------------------|---------------------|
 | `@modelcontextprotocol/server-postgres` | Prisma + Postgres land (Phase 1)         | `DATABASE_URL`      |
 | `@playwright/mcp`                       | Playwright E2E tests land (Phase 2)      | none                |
-| `@sentry/mcp-server`                    | Sentry is wired (CLAUDE.md says optional)| `SENTRY_AUTH_TOKEN` |
 | Vercel MCP                              | Deploying to Vercel and want logs in chat | `VERCEL_TOKEN`     |
 
 When you enable one, append it to `.mcp.json`, add the env var to
