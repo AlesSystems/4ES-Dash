@@ -1,29 +1,32 @@
 /**
  * Game detail page — /game/[appId]
  *
- * Async RSC that fans out four data fetches in parallel:
- *   1. getProfile()            — find the owned game (name, headerUrl, playtime)
- *   2. getGameAchievements()   — per-game achievement list
- *   3. getGameStoreMetadata()  — store description / genres / etc.
- *   4. getGameStorePrice()     — current store price
+ * Async RSC that fans out data fetches across independent sections:
+ *   1. getProfile()  — gating fetch for hero (name, headerUrl, playtime)
+ *   2. GameAchievementsSection — async subcomponent (its own Suspense boundary)
+ *   3. GameStoreSection        — async subcomponent (its own Suspense boundary)
  *
- * All four degrade gracefully (acceptance criteria, Phase 1):
- *   - Private profile on getProfile() → no crash; playtime falls back to 0
+ * Sections 2 and 3 are fully independent of each other and stream in
+ * separately, each with a geometry-matched skeleton fallback for zero CLS.
+ *
+ * Degradation:
+ *   - Private profile on getProfile() → hero falls back (no crash)
  *   - !achievements.available         → AchievementList renders UnavailableState
  *   - !metadata.available             → StoreMetaPanel renders subtle notice
  */
 
+import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 
 import { isSteamApiError } from '@/lib/steam/errors';
 import { getProfile } from '@/server/repositories/profile';
-import { getGameAchievements } from '@/server/repositories/achievements';
-import { getGameStoreMetadata, getGameStorePrice } from '@/server/repositories/store';
+import { getGameStoreMetadata } from '@/server/repositories/store';
 
 import { GameHero } from '@/components/game/GameHero';
-import { AchievementList } from '@/components/game/AchievementList';
-import { StoreMetaPanel } from '@/components/game/StoreMetaPanel';
+import { GameAchievementsSection } from '@/components/game/GameAchievementsSection';
+import { GameStoreSection } from '@/components/game/GameStoreSection';
+import { GameAchievementsSkeleton, GameStoreSkeleton } from '@/components/game/GameDetailSkeletons';
 
 // The page reads live Steam data per request — never prerender at build time.
 export const dynamic = 'force-dynamic';
@@ -75,51 +78,58 @@ export default async function GameDetailPage({
     notFound();
   }
 
-  // Fan out all four fetches in parallel.
-  const [profileResult, achievements, metadata, price] = await Promise.all([
-    // getProfile may throw SteamApiError('private') — catch and degrade.
-    getProfile().catch((err: unknown) => {
-      if (isSteamApiError(err) && err.kind === 'private') {
-        return null;
-      }
-      throw err;
-    }),
-    getGameAchievements(appIdNum),
-    getGameStoreMetadata(appIdNum),
-    getGameStorePrice(appIdNum),
-  ]);
+  // Gating fetch: profile determines hero content (name, header image, playtime).
+  // Achievements and store info are fetched by their own async subcomponents.
+  const profileResult = await getProfile().catch((err: unknown) => {
+    if (isSteamApiError(err) && err.kind === 'private') {
+      return null;
+    }
+    throw err;
+  });
 
   // Find the game in the owned-games list (null if private / not owned).
   const ownedGame =
     profileResult !== null ? (profileResult.games.find((g) => g.appId === appIdNum) ?? null) : null;
 
-  // Derive display fields — prefer profile data, fall back through metadata.
-  const name =
-    ownedGame?.name ??
-    (metadata.available && metadata.data.name.length > 0
-      ? metadata.data.name
-      : `App ${params.appId}`);
+  // Derive hero display fields. Prefer owned-game data; when the game is not
+  // owned (or the profile is private), fall back to store metadata so the hero
+  // shows the real name and image instead of the generic "App {appId}" string.
+  // getGameStoreMetadata is cached (7-day TTL) so the extra await is cheap and
+  // only executes on the !ownedGame path.
+  let name = ownedGame?.name;
+  let headerUrl = ownedGame?.headerUrl;
 
-  const headerUrl =
-    ownedGame?.headerUrl ??
-    (metadata.available && metadata.data.headerImage.length > 0
-      ? metadata.data.headerImage
-      : `https://cdn.akamai.steamstatic.com/steam/apps/${params.appId}/header.jpg`);
+  if (!name || !headerUrl) {
+    const meta = await getGameStoreMetadata(appIdNum).catch(() => null);
+    if (meta && meta.available) {
+      if (!name && meta.data.name.length > 0) name = meta.data.name;
+      if (!headerUrl && meta.data.headerImage.length > 0) headerUrl = meta.data.headerImage;
+    }
+  }
 
+  name = name ?? `App ${params.appId}`;
+  headerUrl =
+    headerUrl ?? `https://cdn.akamai.steamstatic.com/steam/apps/${params.appId}/header.jpg`;
   const playtimeMinutes = ownedGame?.playtime.total ?? 0;
 
   return (
     <main className={SHELL}>
-      {/* Hero: game name, cover, playtime */}
+      {/* Hero: game name, cover, playtime — rendered immediately from profile */}
       <GameHero name={name} headerUrl={headerUrl} playtimeMinutes={playtimeMinutes} />
 
-      {/* Two-column layout: achievements (wider) + store info (sidebar) */}
+      {/* Two-column layout: achievements (wider) + store info (sidebar).
+          Each section fetches independently and streams in behind its own
+          geometry-matched skeleton fallback (zero CLS). */}
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_320px]">
-        {/* Achievements — full degradation handled inside component */}
-        <AchievementList result={achievements} />
+        {/* Achievements — independent Steam call, streams in separately */}
+        <Suspense fallback={<GameAchievementsSkeleton />}>
+          <GameAchievementsSection appId={appIdNum} />
+        </Suspense>
 
-        {/* Store metadata + price — degrades to subtle notice inside component */}
-        <StoreMetaPanel metadata={metadata} price={price} />
+        {/* Store metadata + price — independent Steam call, streams in separately */}
+        <Suspense fallback={<GameStoreSkeleton />}>
+          <GameStoreSection appId={appIdNum} />
+        </Suspense>
       </div>
     </main>
   );

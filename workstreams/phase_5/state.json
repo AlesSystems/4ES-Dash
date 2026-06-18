@@ -1,0 +1,76 @@
+{
+  "feature": "phase_5",
+  "brief": "00-brief.md",
+  "updated": "2026-06-18",
+  "prs": [
+    { "id": "PR1", "title": "Skeletons + error boundaries", "issues": [41, 42], "tasks": ["01", "02", "03"], "branch": "feat/phase-5-skeletons-errors" },
+    { "id": "PR2", "title": "Lighthouse / SEO / a11y / perf", "issues": [43], "tasks": ["04"], "branch": "perf/phase-5-lighthouse" },
+    { "id": "PR3", "title": "Documentation pass", "issues": [46], "tasks": ["05"], "branch": "docs/phase-5-documentation" }
+  ],
+  "tasks": [
+    {
+      "id": "01",
+      "title": "Shared UI primitives (Skeleton, RouteError, RetryBoundary)",
+      "file": "03-tasks/01-shared-primitives.md",
+      "status": "approved",
+      "owner": "human",
+      "pr": "PR1",
+      "tests": [
+        "tests/unit/components/skeleton.test.tsx",
+        "tests/unit/components/route-error.test.tsx",
+        "tests/unit/components/retry-boundary.test.tsx"
+      ],
+      "verdict": "approve",
+      "notes": "Tier-1 contract; runs first. Imported by 02/03/04."
+    },
+    {
+      "id": "02",
+      "title": "Route & global error boundaries with retry",
+      "file": "03-tasks/02-error-boundaries.md",
+      "status": "approved",
+      "owner": "human",
+      "pr": "PR1",
+      "tests": [
+        "tests/unit/app/error-boundaries.test.tsx"
+      ],
+      "verdict": "approve",
+      "notes": "Depends on 01 (RouteError). 31 tests covering AC1, AC2, AC4, AC5 for all 9 boundaries."
+    },
+    {
+      "id": "03",
+      "title": "Section-level Suspense skeletons + CLS test",
+      "file": "03-tasks/03-section-suspense.md",
+      "status": "approved",
+      "owner": "human",
+      "pr": "PR1",
+      "tests": [
+        "tests/unit/section-suspense-geometry.test.tsx",
+        "tests/unit/app/game-detail-hero-fallback.test.tsx"
+      ],
+      "verdict": "approve",
+      "notes": "Extracted GameAchievementsSection + GameStoreSection as async server subcomponents on game detail page. Fixed LibraryValueSkeleton to use Skeleton primitive. 11 geometry/CLS tests covering AC2, AC5."
+    },
+    {
+      "id": "04",
+      "title": "Lighthouse >= 90: SEO, a11y, perf",
+      "file": "03-tasks/04-lighthouse-seo-a11y-perf.md",
+      "status": "todo",
+      "owner": null,
+      "pr": "PR2",
+      "tests": [],
+      "verdict": null,
+      "notes": "After PR1 merged (edits page.tsx metadata). Live score = maintainer step."
+    },
+    {
+      "id": "05",
+      "title": "Documentation pass",
+      "file": "03-tasks/05-documentation-pass.md",
+      "status": "todo",
+      "owner": null,
+      "pr": "PR3",
+      "tests": [],
+      "verdict": null,
+      "notes": "Docs/scripts only; runs in parallel in isolated worktree."
+    }
+  ]
+}

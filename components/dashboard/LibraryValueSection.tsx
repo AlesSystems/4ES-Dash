@@ -1,5 +1,6 @@
 import { getLibraryValue } from '@/server/repositories/library-value';
 import { LibraryValueCard } from '@/components/dashboard/LibraryValueCard';
+import { Skeleton } from '@/components/ui/skeleton';
 
 /**
  * Async server component for the dashboard library-value widget (#29).
@@ -19,9 +20,9 @@ export async function LibraryValueSection(): Promise<JSX.Element> {
 export function LibraryValueSkeleton(): JSX.Element {
   return (
     <section className="rounded-lg border border-border bg-surface p-6" aria-busy="true">
-      <div className="h-3 w-24 animate-pulse rounded bg-surface-2" />
-      <div className="mt-4 h-16 w-40 animate-pulse rounded bg-surface-2" />
-      <div className="mt-4 h-3 w-full animate-pulse rounded bg-surface-2" />
+      <Skeleton className="h-3 w-24" />
+      <Skeleton className="mt-4 h-16 w-40" />
+      <Skeleton className="mt-4 h-3 w-full" />
     </section>
   );
 }
