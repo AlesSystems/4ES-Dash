@@ -189,5 +189,14 @@ model JobRun {
 ## Privacy
 
 - We store the user's `steamId`, `personaName`, and avatar URL. Nothing else identifies them.
-- A user can purge their data by deleting their `User` row; cascades wipe everything tied to that `steamId`.
+- **Account deletion** (Task 08, `server/repositories/account.ts` → `deleteAccountData(steamId)`):
+  the schema has **no `onDelete: Cascade`** — and `ManualGameData` / `IdleDismissal`
+  have no FK relation to `User` at all — so deletion is an **explicit single
+  `prisma.$transaction`** that `deleteMany`s every `steamId`-keyed table (children
+  first: `PlaytimeSnapshot`, `AchievementSnapshot`, `OwnedGame`, `ManualGameData`,
+  `IdleDismissal`), then deletes the `User` row last. It is all-or-nothing: a
+  partial failure rolls back and surfaces an error — no silently orphaned PII.
+  **If you add a new `steamId`-keyed table, you must add it to `deleteAccountData`**
+  (there is no cascade to do it for you). JWT sessions (ADR 0002 §2) mean there are
+  no `Account`/`Session` rows to clean.
 - Profile visibility is controlled by the `privacy` field (`public` | `friendsOnly` | `private`). Default is `private` (ADR 0002 §4). The authorization layer (Task 05 / `server/authz.ts`) enforces this at query time; the repository layer always receives an explicit `steamId` argument and never falls back to a global owner.

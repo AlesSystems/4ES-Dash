@@ -45,21 +45,28 @@ export interface OnboardingResult {
  * @returns { onboarded: true } on success, or { onboarded: false, reason }
  *   on private-profile or transient failure. Never throws.
  */
-export async function runOnboardingBackfill(steamId: string): Promise<OnboardingResult> {
+export async function runOnboardingBackfill(
+  steamId: string,
+  opts?: { force?: boolean },
+): Promise<OnboardingResult> {
   // Throws MissingSteamIdError synchronously for blank input — callers can
   // let this propagate (it is a programming error, not a runtime failure).
   const id = requireSteamId(steamId, 'runOnboardingBackfill');
 
   // ------------------------------------------------------------------
   // Idempotency guard — check if this user has already been onboarded.
-  // If onboardedAt is set, all the seed data exists; return immediately.
+  // If onboardedAt is set AND force is not true, return immediately.
+  // With force:true (re-sync) we skip this guard and re-run the upserts;
+  // idempotency is preserved by upsert + day-keyed snapshot key.
   // ------------------------------------------------------------------
-  const existing = await prisma.user.findUnique({
-    where: { steamId: id },
-    select: { onboardedAt: true },
-  });
-  if (existing?.onboardedAt != null) {
-    return { onboarded: true };
+  if (!opts?.force) {
+    const existing = await prisma.user.findUnique({
+      where: { steamId: id },
+      select: { onboardedAt: true },
+    });
+    if (existing?.onboardedAt != null) {
+      return { onboarded: true };
+    }
   }
 
   // ------------------------------------------------------------------
