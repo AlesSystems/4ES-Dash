@@ -2,7 +2,15 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Library, BarChart2, Calendar, type LucideIcon } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Library,
+  Clock,
+  Users,
+  BarChart2,
+  Calendar,
+  type LucideIcon,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface BrowseItem {
@@ -17,9 +25,9 @@ interface BrowseItem {
  * Sidebar "Browse" navigation (client — needs the active route).
  *
  * Counts are passed in from the async {@link Sidebar} RSC so they reflect real
- * library data. Only real routes appear here (Dashboard, Library); decorative
- * entries from the mockup (Collections, Friends) are intentionally omitted —
- * see the degradation contract in CLAUDE.md.
+ * library data. All six routes (Dashboard, Library, History, Friends, Insights,
+ * Year in Review) are real, shipped, middleware-protected routes — matches the
+ * top app-bar {@link NavLinks} order.
  */
 const CURRENT_YEAR = new Date().getUTCFullYear();
 
@@ -29,6 +37,8 @@ export function SidebarNav({ libraryCount }: { libraryCount: number | null }): J
   const items: BrowseItem[] = [
     { label: 'Dashboard', href: '/', icon: LayoutDashboard, count: null },
     { label: 'Library', href: '/library', icon: Library, count: libraryCount },
+    { label: 'History', href: '/history', icon: Clock, count: null },
+    { label: 'Friends', href: '/friends', icon: Users, count: null },
     { label: 'Insights', href: '/insights/genres', icon: BarChart2, count: null },
     { label: 'Year in Review', href: `/review/${CURRENT_YEAR}`, icon: Calendar, count: null },
   ];
