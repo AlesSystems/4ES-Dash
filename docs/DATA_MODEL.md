@@ -118,6 +118,16 @@ model AchievementSnapshot {
   @@id([steamId, appId, date])
 }
 
+model AchievementUnlock {
+  steamId    String
+  appId      Int
+  apiName    String
+  unlockedAt DateTime
+
+  @@id([steamId, appId, apiName])
+  @@index([steamId, unlockedAt])
+}
+
 model ManualGameData {
   steamId        String
   appId          Int
@@ -158,6 +168,7 @@ model JobRun {
 - **Playtime is monotonic.** `playtimeForever` should only increase. A decrease indicates a Steam-side correction; the snapshot job logs it and clamps to the previous value.
 - **Genres as JSON for now.** A separate `GameGenre` join table is the right move once we filter by genre, but we ship JSON to keep migrations cheap until then.
 - **Achievement snapshots store counts only.** Per-achievement timestamps already live on `GetPlayerAchievements`; we re-fetch on demand for the detail view and don't archive them.
+- **`AchievementUnlock` records unlock _events_, not counts (#91).** `AchievementSnapshot` stores a cumulative `unlockedCount` per day, which only yields a year total via `max − min` across snapshots — useless with ≤1 snapshot in a year (the common case, since onboarding seeds no achievement baseline). `AchievementUnlock` instead stores one row per unlocked achievement keyed by its real `unlockedAt` (from Steam's `unlocktime`, unix SECONDS × 1000), so Year-in-Review counts by UTC year directly and is correct on day one. `unlocktime 0` ("time unknown") is excluded at write time. The compound PK `(steamId, appId, apiName)` makes re-recording idempotent; `@@index([steamId, unlockedAt])` serves the per-user year query. Written by the nightly snapshot job (from the same achievement fetch — no extra Steam calls) and seeded by the onboarding backfill so prior years populate retroactively.
 - **`acquiredAt` is inferred, not sourced.** The official Steam Web API (`GetOwnedGames`) does not return when a game was added to the library. `acquiredAt` is populated the first time the game appears in a nightly snapshot run. Games that existed in the library before snapshotting started will have `acquiredAt = null`.
 - **`ManualGameData` is separate from `OwnedGame` by design.** User-supplied price-paid and acquisition data (#40) live in their own table so the inferred `OwnedGame.acquiredAt` (first-snapshot date) is never silently overwritten by an import. Cost-per-hour logic prefers the real `pricePaidCents` when present, falling back to current store price. `pricePaidCents` is in minor units (e.g. cents for USD); `currency` is ISO 4217.
 - **`IdleDismissal` is keyed by the exact spike window (#37).** The composite PK is `(steamId, appId, fromDate, toDate)`. This means dismissing one idle-detection flag for a specific playtime spike window never suppresses a _different_ spike (different window) on the same game — each new anomaly surfaces independently. The `@@index([steamId, appId])` speeds up the common lookup: "are any dismissals recorded for this game?"

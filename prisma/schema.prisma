@@ -115,6 +115,24 @@ model AchievementSnapshot {
   @@id([steamId, appId, date])
 }
 
+// Per-achievement unlock EVENT, keyed by the real unlock time (#91). Unlike the
+// cumulative-count AchievementSnapshot, this records WHEN each achievement was
+// unlocked, so Year-in-Review can count unlocks by their UTC year without
+// needing a snapshot history (a single day of data still yields a correct
+// count). Written by the nightly job + onboarding backfill from Steam's
+// unlocktime (unix SECONDS × 1000). unlocktime 0 ("time unknown") is excluded
+// at write time, so a row's unlockedAt is always a real timestamp. Keyed by
+// (steamId, appId, apiName) so re-recording the same unlock is idempotent.
+model AchievementUnlock {
+  steamId    String
+  appId      Int
+  apiName    String
+  unlockedAt DateTime
+
+  @@id([steamId, appId, apiName])
+  @@index([steamId, unlockedAt])
+}
+
 // ─── Manual / enrichment data (Phase 4) ────────────────────────────────────
 
 // User-supplied data Steam never exposes (price paid, acquisition date) — see

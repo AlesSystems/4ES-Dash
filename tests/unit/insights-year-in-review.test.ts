@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   availableYears,
   computeYearInReview,
+  countUnlocksInYear,
   type YearPlaytimeRow,
-  type YearAchievementRow,
+  type AchievementUnlockRow,
 } from '@/lib/insights/year-in-review';
 
 // ---------------------------------------------------------------------------
@@ -14,8 +15,15 @@ function pt(appId: number, utcDateStr: string, playtimeForever: number): YearPla
   return { appId, date: new Date(utcDateStr), playtimeForever };
 }
 
-function ach(appId: number, utcDateStr: string, unlockedCount: number): YearAchievementRow {
-  return { appId, date: new Date(utcDateStr), unlockedCount };
+let _seq = 0;
+/** An achievement UNLOCK EVENT row (#91), keyed by real unlockedAt. */
+function unlock(appId: number, utcDateStr: string, apiName?: string): AchievementUnlockRow {
+  return {
+    steamId: '76561190000000000',
+    appId,
+    apiName: apiName ?? `ach_${appId}_${_seq++}`,
+    unlockedAt: new Date(utcDateStr),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -90,18 +98,19 @@ describe('computeYearInReview — single game', () => {
     expect(result.topGames[0]?.name).toBe('App 99');
   });
 
-  it('includes achievement delta', () => {
+  it('counts achievement unlock events in the year', () => {
     const names = new Map([[1, 'Portal']]);
     const playtime = [
       pt(1, '2025-05-01T00:00:00.000Z', 60),
       pt(1, '2025-05-10T00:00:00.000Z', 120),
     ];
-    const achievements = [
-      ach(1, '2025-05-01T00:00:00.000Z', 5),
-      ach(1, '2025-05-10T00:00:00.000Z', 12),
+    const unlocks = [
+      unlock(1, '2025-05-01T00:00:00.000Z'),
+      unlock(1, '2025-05-03T00:00:00.000Z'),
+      unlock(1, '2025-05-10T00:00:00.000Z'),
     ];
-    const result = computeYearInReview(2025, playtime, achievements, names);
-    expect(result.achievementsUnlocked).toBe(7); // 12 - 5
+    const result = computeYearInReview(2025, playtime, unlocks, names);
+    expect(result.achievementsUnlocked).toBe(3);
   });
 });
 
@@ -194,14 +203,95 @@ describe('computeYearInReview — multi-game', () => {
     expect(result.topGames).toEqual([]);
   });
 
-  it('sums achievement deltas across multiple games', () => {
-    const achievements = [
-      ach(1, '2025-01-01T00:00:00.000Z', 0),
-      ach(1, '2025-12-01T00:00:00.000Z', 10), // +10
-      ach(2, '2025-03-01T00:00:00.000Z', 5),
-      ach(2, '2025-09-01T00:00:00.000Z', 18), // +13
+  it('counts unlock events across multiple games', () => {
+    const unlocks = [
+      unlock(1, '2025-01-01T00:00:00.000Z'),
+      unlock(1, '2025-12-01T00:00:00.000Z'),
+      unlock(2, '2025-03-01T00:00:00.000Z'),
+      unlock(2, '2025-09-01T00:00:00.000Z'),
+      unlock(2, '2025-09-02T00:00:00.000Z'),
     ];
-    const result = computeYearInReview(2025, [], achievements, new Map());
-    expect(result.achievementsUnlocked).toBe(23); // 10 + 13
+    const result = computeYearInReview(2025, [], unlocks, new Map());
+    expect(result.achievementsUnlocked).toBe(5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// countUnlocksInYear — #91 achievement-unlock counting by real unlockedAt
+// ---------------------------------------------------------------------------
+
+describe('countUnlocksInYear (#91)', () => {
+  it('counts unlocks whose unlockedAt UTC year matches (history-independent)', () => {
+    // A single day of data, no snapshot history at all — the old delta logic
+    // returned 0 here; counting events returns the real number.
+    const rows = [
+      unlock(1, '2025-04-01T12:00:00.000Z'),
+      unlock(1, '2025-04-01T12:05:00.000Z'),
+      unlock(2, '2025-04-01T12:10:00.000Z'),
+    ];
+    expect(countUnlocksInYear(rows, 2025)).toBe(3);
+  });
+
+  it('history-independent via computeYearInReview: one playtime day, unlocks > 0', () => {
+    const playtime = [pt(1, '2025-07-01T00:00:00.000Z', 500)]; // single snapshot
+    const unlocks = [unlock(1, '2025-07-01T00:00:00.000Z'), unlock(1, '2025-07-01T01:00:00.000Z')];
+    const result = computeYearInReview(2025, playtime, unlocks, new Map([[1, 'Game']]));
+    expect(result.totalMinutes).toBe(0); // single snapshot → no playtime delta
+    expect(result.achievementsUnlocked).toBe(2); // but unlocks still count
+  });
+
+  it('respects UTC year boundaries in both directions', () => {
+    const rows = [
+      unlock(1, '2025-12-31T23:59:59.000Z'), // 2025
+      unlock(1, '2026-01-01T00:00:00.000Z'), // 2026
+    ];
+    expect(countUnlocksInYear(rows, 2025)).toBe(1);
+    expect(countUnlocksInYear(rows, 2026)).toBe(1);
+  });
+
+  it('seconds→ms: a unix-seconds unlocktime lands in the correct year', () => {
+    // 1735689599 s = 2024-12-31T23:59:59Z ; 1735689600 s = 2025-01-01T00:00:00Z
+    const beforeNewYear: AchievementUnlockRow = {
+      steamId: '76561190000000000',
+      appId: 1,
+      apiName: 'a',
+      unlockedAt: new Date(1735689599 * 1000),
+    };
+    const afterNewYear: AchievementUnlockRow = {
+      steamId: '76561190000000000',
+      appId: 1,
+      apiName: 'b',
+      unlockedAt: new Date(1735689600 * 1000),
+    };
+    expect(countUnlocksInYear([beforeNewYear], 2024)).toBe(1);
+    expect(countUnlocksInYear([beforeNewYear], 2025)).toBe(0);
+    expect(countUnlocksInYear([afterNewYear], 2025)).toBe(1);
+  });
+
+  it('counts an unlock in a game outside the top-played set', () => {
+    // The count never filters by which games are "top" — a high appId with no
+    // playtime delta still contributes its unlocks.
+    const rows = [unlock(999999, '2025-02-02T00:00:00.000Z')];
+    const result = computeYearInReview(2025, [], rows, new Map());
+    expect(result.achievementsUnlocked).toBe(1);
+  });
+
+  it('excludes an epoch (unlocktime 0 → 1970) row defensively', () => {
+    const rows: AchievementUnlockRow[] = [
+      { steamId: '76561190000000000', appId: 1, apiName: 'x', unlockedAt: new Date(0) },
+      unlock(1, '1970-06-01T00:00:00.000Z'),
+    ];
+    expect(countUnlocksInYear(rows, 1970)).toBe(0);
+  });
+
+  it('cross-check: sum over years equals total real unlock rows', () => {
+    const rows = [
+      unlock(1, '2023-05-01T00:00:00.000Z'),
+      unlock(1, '2024-05-01T00:00:00.000Z'),
+      unlock(2, '2024-08-01T00:00:00.000Z'),
+      unlock(3, '2025-01-02T00:00:00.000Z'),
+    ];
+    const total = [2023, 2024, 2025].reduce((sum, y) => sum + countUnlocksInYear(rows, y), 0);
+    expect(total).toBe(rows.length);
   });
 });

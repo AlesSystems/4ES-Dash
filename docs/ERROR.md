@@ -23,6 +23,7 @@ Rules:
 | ERR-0006 | 2026-06-17 | frontend | Low | Async server component inside the dashboard tree broke `@testing-library` jsdom render | Fixed |
 | ERR-0007 | 2026-06-18 | frontend | Medium | `/compare` side A defaulted to the placeholder `STEAM_ID`, breaking shared games and rendering a raw SteamID as a name | Fixed |
 | ERR-0008 | 2026-06-18 | frontend | Medium | Genre breakdown showed "No genre data yet" for a signed-in-but-not-onboarded user until a manual re-sync | Fixed |
+| ERR-0009 | 2026-06-18 | jobs | Medium | Year-in-Review "achievements unlocked" was always 0 — counted as a cumulative-snapshot delta with ≤1 snapshot/year | Fixed |
 
 **Allowed values**
 
@@ -229,6 +230,27 @@ Copy this block when adding a new entry. Replace every placeholder including the
 **Where else this assumption may be wrong:** Every other onboarding-dependent "my" view that reads `ownedGame`/snapshot tables directly (history, year in review, library, insights/*). Each should consult `getOnboardingStatus()` rather than inferring "empty" from zero rows.
 
 **Prevented by:** A genres-page test covering all three states (not-onboarded → redirect; onboarded+data → slices; onboarded+empty → empty state) plus the gate's own unit tests; the empty-state copy is asserted to appear only on the onboarded-empty path.
+
+---
+
+### ERR-0009 — Year-in-Review "achievements unlocked" stuck at 0
+
+**Date:** 2026-06-18
+**Module:** jobs
+**Severity:** Medium
+**Status:** Fixed
+
+**Symptom:** The Year-in-Review page reported "0 achievements unlocked" for a year even when the user had clearly unlocked achievements (and the dashboard's live achievement summary, counting the same data, was non-zero — the two surfaces disagreed).
+
+**Root cause:** `achievementsUnlocked` was computed as `max(unlockedCount) − min(unlockedCount)` among the year's `AchievementSnapshot` rows. With ≤1 snapshot in the year — the common case, since onboarding seeds no achievement baseline and only the top-20 games are snapshotted — the delta is 0. The real per-achievement `unlockedAt` (parsed in `lib/steam/achievements.ts` as unix seconds × 1000) was discarded by the job. The existing test never asserted a non-zero count, so CI missed it.
+
+**Fix:** New `AchievementUnlock` event table (one new migration `20260618233552_add_achievement_unlocks`) recording one row per unlocked achievement keyed by its real `unlockedAt`. `server/jobs/snapshot.ts` writes these from the same achievement fetch (no extra Steam calls); `server/jobs/onboarding-backfill.ts` seeds them on first run so prior years populate retroactively. `lib/insights/year-in-review.ts#countUnlocksInYear` counts events by UTC year (seconds→ms guarded, `unlocktime 0`/epoch excluded), and `server/repositories/insights/year-in-review.ts` feeds it the unlock rows instead of the snapshot delta.
+
+**Generalized rule:** To count *occurrences within a window*, store and count the events (timestamped), never a delta of a cumulative counter — a delta needs ≥2 samples bracketing the window and silently returns 0 when the history is sparse. And every "count > 0" requirement needs a test that asserts a *non-zero* result, not just shape.
+
+**Where else this assumption may be wrong:** Any other "in this period" metric derived from snapshot deltas — e.g. playtime-gained for a year/month with a single snapshot (the playtime delta has the same ≤1-sample blind spot, mitigated only because playtime is snapshotted daily for all games).
+
+**Prevented by:** Tests asserting a non-zero, history-independent count (single day of data → count > 0), UTC year-boundary cases both directions, the seconds→ms conversion, exclusion of `unlocktime 0`, contribution from games outside the top-played set, and a sum-over-years cross-check.
 
 ---
 

@@ -186,6 +186,10 @@ async function prismaPriorMax(steamId: string, dayKey: Date): Promise<Map<number
  * Bounded to {@link ACHIEVEMENT_SNAPSHOT_LIMIT} because each game costs
  * rate-limited Steam calls. Games whose achievement data is unavailable
  * (private / none) are silently skipped — never throws.
+ *
+ * In the SAME pass it also records per-achievement unlock EVENTS (#91) from the
+ * already-fetched data — no extra Steam calls — so Year-in-Review can count
+ * unlocks by their real `unlockedAt` UTC year instead of a snapshot delta.
  */
 async function snapshotAchievements(
   steamId: string,
@@ -206,7 +210,70 @@ async function snapshotAchievements(
       create: { steamId, appId: game.appId, date: dayKey, unlockedCount: result.data.unlocked },
       update: {},
     });
+    // Record real unlock events from the same fetch (no extra Steam call).
+    await upsertUnlockEvents(steamId, game.appId, result.data.items);
     written += 1;
   }
   return written;
+}
+
+/** Minimal per-achievement shape needed to record an unlock event. */
+interface UnlockItem {
+  apiName: string;
+  unlocked: boolean;
+  /** ISO-8601 UTC string; null when locked or Steam reports unlocktime 0. */
+  unlockedAt: string | null;
+}
+
+/**
+ * Upserts AchievementUnlock rows for the unlocked achievements of one game,
+ * keyed by the real unlock time. Achievements that are locked or have an
+ * unknown unlock time (`unlockedAt === null`, i.e. Steam's unlocktime 0) are
+ * skipped — never stored as a 1970 epoch. Idempotent: the row is immutable
+ * once written (compound PK `(steamId, appId, apiName)`, empty `update`).
+ * Returns the number of unlock rows seen (created or already present).
+ */
+async function upsertUnlockEvents(
+  steamId: string,
+  appId: number,
+  items: UnlockItem[],
+): Promise<number> {
+  let n = 0;
+  for (const item of items) {
+    if (!item.unlocked || item.unlockedAt === null) continue;
+    await prisma.achievementUnlock.upsert({
+      where: { steamId_appId_apiName: { steamId, appId, apiName: item.apiName } },
+      create: { steamId, appId, apiName: item.apiName, unlockedAt: new Date(item.unlockedAt) },
+      update: {}, // a recorded unlock is immutable — idempotent re-run
+    });
+    n += 1;
+  }
+  return n;
+}
+
+/**
+ * Records per-achievement unlock events (#91) for the most-played achievement
+ * games of `steamId`, fetching the bounded top-N via the cached, rate-limited
+ * achievement repository. Used by the onboarding backfill so a brand-new user's
+ * EXISTING unlocks (and therefore prior years) populate immediately, attributed
+ * by their real `unlockedAt`. Off the interactive request path — call only from
+ * jobs / the onboarding flow. Never throws; unavailable games are skipped.
+ * Returns the number of unlock rows recorded.
+ */
+export async function recordAchievementUnlocks(
+  steamId: string,
+  games: OwnedGame[],
+): Promise<number> {
+  const candidates = topGamesByPlaytime(
+    games.filter((g) => g.hasAchievements),
+    ACHIEVEMENT_SNAPSHOT_LIMIT,
+  );
+
+  let total = 0;
+  for (const game of candidates) {
+    const result = await getGameAchievements(steamId, game.appId);
+    if (!result.available) continue;
+    total += await upsertUnlockEvents(steamId, game.appId, result.data.items);
+  }
+  return total;
 }
