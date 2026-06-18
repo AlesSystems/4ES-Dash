@@ -15,6 +15,7 @@ import {
 import { AchievementSummary } from '@/components/dashboard/AchievementSummary';
 import { EmptyState } from '@/components/states/EmptyState';
 import { StaleBanner } from '@/components/states/StaleBanner';
+import { Landing } from '@/components/marketing/Landing';
 import { getProfile } from '@/server/repositories/profile';
 import { getLevel } from '@/server/repositories/level';
 import { getRecentlyPlayed } from '@/server/repositories/recently-played';
@@ -39,16 +40,9 @@ export default async function HomePage() {
   // / featured-profile fallback (env.STEAM_ID). See server/auth.ts.
   const featuredId = await getViewerSteamId();
 
+  // No session AND no featured fallback → logged-out landing (the public face).
   if (!featuredId) {
-    return (
-      <main className={SHELL}>
-        <h1 className="sr-only">Dashboard</h1>
-        <EmptyState
-          title="No profile configured"
-          description="Set STEAM_ID in your environment to see your dashboard."
-        />
-      </main>
-    );
+    return <Landing />;
   }
 
   // Profile gates the page: a private library degrades to a designed empty state.

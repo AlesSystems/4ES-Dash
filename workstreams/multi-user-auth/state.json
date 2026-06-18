@@ -65,9 +65,9 @@
       "title": "first-login onboarding backfill",
       "issue": 64,
       "file": "03-tasks/06-onboarding-backfill.md",
-      "status": "todo",
-      "owner": null,
-      "tests": ["tests/unit/onboarding-backfill.test.ts"],
+      "status": "in-review",
+      "owner": "implementer-sonnet",
+      "tests": ["tests/unit/onboarding-backfill.test.ts", "tests/unit/auth-events.test.ts"],
       "verdict": null,
       "notes": "Tier 3. Depends on 02+03+04. Must be idempotent + rate-limited; private profile -> locked state."
     },
@@ -76,8 +76,8 @@
       "title": "auth UI — sign in/out + user menu + landing",
       "issue": 65,
       "file": "03-tasks/07-auth-ui.md",
-      "status": "todo",
-      "owner": null,
+      "status": "in-review",
+      "owner": "implementer-sonnet",
       "tests": ["tests/unit/UserMenu.test.tsx"],
       "verdict": null,
       "notes": "Tier 3. Depends on 02. App bar is a merge point — serialize shell edits."

@@ -1,10 +1,10 @@
-import Image from 'next/image';
 import Link from 'next/link';
 import { getProfile } from '@/server/repositories/profile';
 import { getLevel } from '@/server/repositories/level';
 import { getViewerSteamId } from '@/server/auth';
 import { isSteamApiError } from '@/lib/steam/errors';
 import { formatHours } from '@/lib/format/playtime';
+import { AuthControls } from '@/components/auth/AuthControls';
 import { NavLinks } from './NavLinks';
 import { ThemeToggle } from './ThemeToggle';
 
@@ -12,9 +12,6 @@ import { ThemeToggle } from './ThemeToggle';
 // Placeholder fallbacks — shown on any fetch failure (graceful degradation)
 // ---------------------------------------------------------------------------
 
-const PLACEHOLDER_AVATAR =
-  'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg';
-const PLACEHOLDER_NAME = '—';
 const PLACEHOLDER_VALUE = '—';
 
 // ---------------------------------------------------------------------------
@@ -29,9 +26,8 @@ const PLACEHOLDER_VALUE = '—';
  */
 export async function AppHeader(): Promise<JSX.Element> {
   // Resolve profile + level in parallel; absorb all errors — the header must
-  // never crash the page.
-  let personaName = PLACEHOLDER_NAME;
-  let avatarUrl = PLACEHOLDER_AVATAR;
+  // never crash the page. Avatar/persona now live in <AuthControls/>; here we
+  // only compute the viewer-stat badges (level + total playtime).
   let levelDisplay = PLACEHOLDER_VALUE;
   let totalPlaytimeDisplay = PLACEHOLDER_VALUE;
 
@@ -49,9 +45,6 @@ export async function AppHeader(): Promise<JSX.Element> {
     ]);
 
     if (profileResult !== null) {
-      personaName = profileResult.profile.personaName;
-      avatarUrl = profileResult.profile.avatar.medium;
-
       // Total playtime = sum of all owned games' total playtime.
       const totalMinutes = profileResult.games.reduce((sum, game) => sum + game.playtime.total, 0);
       totalPlaytimeDisplay = formatHours(totalMinutes);
@@ -90,22 +83,6 @@ export async function AppHeader(): Promise<JSX.Element> {
 
         {/* Profile cluster */}
         <div className="flex items-center gap-3">
-          {/* Avatar */}
-          <Image
-            src={avatarUrl}
-            alt={personaName !== PLACEHOLDER_NAME ? `${personaName}'s avatar` : 'Steam avatar'}
-            width={32}
-            height={32}
-            sizes="32px"
-            className="rounded-full shrink-0"
-            priority
-          />
-
-          {/* Display name */}
-          <span className="hidden sm:block text-body font-medium text-text-1 max-w-[140px] truncate">
-            {personaName}
-          </span>
-
           {/* Steam level badge */}
           <span
             className="inline-flex items-center rounded-md border border-border bg-surface-2 px-2 py-0.5 text-caption font-semibold text-text-2 tabular-nums"
@@ -126,6 +103,9 @@ export async function AppHeader(): Promise<JSX.Element> {
 
           {/* Theme toggle (#21) */}
           <ThemeToggle />
+
+          {/* Auth control — user menu when signed in, sign-in button when not */}
+          <AuthControls />
         </div>
       </div>
     </header>

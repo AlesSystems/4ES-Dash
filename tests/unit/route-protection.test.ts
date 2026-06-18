@@ -29,9 +29,11 @@ describe('middleware config.matcher', () => {
     matcherPaths = (mod.config?.matcher as string[]) ?? [];
   });
 
-  // Protected "my" paths that must require authentication
+  // Protected "my" paths that must require authentication.
+  // NOTE: '/' is intentionally NOT protected — it self-gates in app/page.tsx
+  // (dashboard when a viewer resolves, logged-out Landing otherwise).
   const PROTECTED_PATHS = [
-    '/',
+    '/onboarding/:path*',
     '/library/:path*',
     '/friends/:path*',
     '/history/:path*',
@@ -43,6 +45,10 @@ describe('middleware config.matcher', () => {
 
   it.each(PROTECTED_PATHS)('matcher includes protected path: %s', (path) => {
     expect(matcherPaths).toContain(path);
+  });
+
+  it('matcher does NOT include "/" (it self-gates to dashboard or landing)', () => {
+    expect(matcherPaths).not.toContain('/');
   });
 
   // Public/API paths that must NOT be in the matcher (would block them if included)
