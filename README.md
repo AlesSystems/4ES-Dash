@@ -13,10 +13,6 @@ and trends, all self-hosted with your own data.
 - **pnpm** — install with `npm install -g pnpm` or via [pnpm.io](https://pnpm.io)
 - **Steam Web API key** — get one at
   [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey)
-- **64-bit Steam ID** — 17-digit numeric string (e.g. `76561198000000000`).
-  Find yours at [steamidfinder.com](https://www.steamidfinder.com) or by
-  looking at your Steam profile URL. Must be a string — JavaScript's `Number`
-  cannot hold it precisely.
 
 ## Local setup
 
@@ -30,12 +26,20 @@ cp .env.example .env
 
 Open `.env` and fill in the required values:
 
-| Variable        | Required | Description |
-| --------------- | -------- | ----------- |
-| `STEAM_API_KEY` | yes      | Your Steam Web API key (server-only, never exposed to the browser) |
-| `STEAM_ID`      | yes      | Your 17-digit 64-bit Steam ID as a string |
-| `DATABASE_URL`  | yes      | SQLite path for local dev: `file:./dev.db` (already in `.env.example`) |
-| `CRON_SECRET`   | optional | Required only to call the cron routes (`/api/cron/*`); authenticates the request. Generate with `openssl rand -hex 32` |
+| Variable          | Required | Description |
+| ----------------- | -------- | ----------- |
+| `STEAM_API_KEY`   | yes      | Your Steam Web API key (server-only, never exposed to the browser) |
+| `NEXTAUTH_SECRET` | yes      | Signs/encrypts the JWT session cookie. Generate with `openssl rand -base64 32` |
+| `NEXTAUTH_URL`    | yes      | Canonical origin, e.g. `http://localhost:3000` for local dev |
+| `DATABASE_URL`    | yes      | SQLite path for local dev: `file:./dev.db` (already in `.env.example`) |
+| `STEAM_ID`        | optional | 17-digit 64-bit Steam ID. **No longer required** — this is now an optional dev / featured-profile fallback. Signed-in users are identified by their Steam session, not this variable. |
+| `CRON_SECRET`     | optional | Required only to call the cron routes (`/api/cron/*`); authenticates the request. Generate with `openssl rand -hex 32` |
+
+> **Sign in with Steam.** Once the app is running, visit
+> [http://localhost:3000](http://localhost:3000) and click **Sign in with Steam**.
+> Signing in with your Steam account establishes a session and seeds your library
+> data. You do not need to set `STEAM_ID` unless you want a pre-seeded featured
+> profile on the landing page.
 
 ```bash
 # 3. Create the database and run migrations
@@ -70,9 +74,9 @@ support is planned but not yet available.
 
 ## Status
 
-Phases 0–4 shipped (foundation, Steam data layer, snapshots, friends, and
-insights). Phase 5 (polish) and Phase 6 (multi-user auth) in progress.
-See the [roadmap](./ROADMAP.md) for details.
+Phases 0–6 shipped (foundation, Steam data layer, snapshots, friends, insights,
+polish, and multi-user auth with Steam OpenID). See the [roadmap](./ROADMAP.md)
+for the full phase breakdown.
 
 ## License
 
