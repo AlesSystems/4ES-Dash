@@ -177,8 +177,7 @@ Hard-won conventions (these bit during Phase 0):
 ## When completing tasks:
 
 1. Analyze repository structure
-2. Use relevant skills from .github/skills (if exists)
-3. If have any questions or uncertanity, just ask developer to clarify.
+2. If have any questions or uncertanity, just ask developer to clarify.
 
 ## After implementation finish:
 
