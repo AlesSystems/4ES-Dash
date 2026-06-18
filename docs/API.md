@@ -42,8 +42,6 @@
 
 Returns the configured user's public profile and their full owned-game library.
 
-> **Note:** `level` is added in Phase 1 (requires GetSteamLevel). It is not present in Phase 0 responses.
-
 **Response 200**
 
 ```json
@@ -205,7 +203,7 @@ Recently played (last 2 weeks).
 
 ### `GET /api/friends`
 
-(Phase 3.) Friend list with online status.
+Friend list with online status.
 
 **Response 200**
 
@@ -365,4 +363,5 @@ The API is currently `v1` implicitly. Breaking changes will introduce `/api/v2/*
 
 ## OpenAPI
 
-A machine-readable spec lives at `docs/openapi.yaml` (TODO — generated from Zod schemas via `zod-to-openapi` once the surface stabilizes).
+A machine-readable spec (`docs/openapi.yaml`) generated from Zod schemas via
+`zod-to-openapi` is deferred until the API surface stabilises.

@@ -1,93 +1,54 @@
 # Deployment
 
-Three supported targets: local dev, self-hosted Docker, and Vercel.
+The supported local-dev path is documented below. Docker support is planned (see Fix 6 below).
 
 ## Environment variables
 
-See `.env.example` for the canonical list. The server validates `process.env` at boot via Zod; missing or invalid values crash immediately.
+See `.env.example` for the canonical list. The server validates `process.env`
+at first use via Zod; missing or invalid values crash immediately with a clear
+error message.
 
-| Var               | Dev    | Docker | Vercel |
-| ----------------- | ------ | ------ | ------ |
-| `STEAM_API_KEY`   | ✓      | ✓      | ✓      |
-| `STEAM_ID`        | ✓      | ✓      | ✓      |
-| `DATABASE_URL`    | `file:./dev.db` | Postgres URL | Vercel Postgres |
-| `REDIS_URL`       | optional | recommended | Vercel KV |
-| `CRON_SECRET`     | optional | ✓ | ✓ |
+| Var               | Local dev       | What it means |
+| ----------------- | --------------- | ------------- |
+| `STEAM_API_KEY`   | required        | Steam Web API key — get one at [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey). **Server-only** — never prefix with `NEXT_PUBLIC_`. |
+| `STEAM_ID`        | required        | Your 17-digit 64-bit Steam ID as a string (e.g. `76561198000000000`). JavaScript `Number` cannot hold this precisely; always treat it as a string. |
+| `DATABASE_URL`    | `file:./dev.db` | Prisma connection string. SQLite file path for local dev; a `postgresql://` URL for self-hosted Postgres. |
+| `CRON_SECRET`     | optional        | Shared secret for cron route handlers (`/api/cron/*`). Compared with `crypto.timingSafeEqual`. Generate with `openssl rand -hex 32`. |
+| `REDIS_URL`       | optional        | Redis connection URL. Falls back to an in-memory LRU cache when unset (suitable for local dev). |
+| `ENABLE_STEAMSPY` | optional        | Set to `1` to enable SteamSpy genre/tag/ownership enrichment (Phase 4 opt-in). Off by default — enabling adds outbound calls to `steamspy.com`. |
+| `ITAD_API_KEY`    | optional        | Free API key from [IsThereAnyDeal](https://isthereanydeal.com/apps/my/). Enables historical-low price data (Phase 4 opt-in). Disabled (no calls made) when unset. |
 
 ## Local dev
 
 ```bash
 pnpm install
-cp .env.example .env  # edit
+cp .env.example .env   # fill in STEAM_API_KEY, STEAM_ID, DATABASE_URL, CRON_SECRET
 pnpm prisma migrate dev
 pnpm dev
 ```
 
-SQLite at `dev.db`. In-memory cache. No cron — invoke `/api/cron/snapshot` manually (with the
-`x-cron-secret` header) if you want to populate snapshots, or run `pnpm prisma db seed` for synthetic history.
+SQLite at `dev.db`. In-memory LRU cache (no Redis needed). No cron daemon —
+invoke `/api/cron/snapshot` manually with the `x-cron-secret` header if you
+want to populate snapshots, or run `pnpm prisma db seed` for synthetic history.
 
-## Self-hosted Docker
+### Database migrations (self-hosted Postgres)
 
-`docker-compose.yml` brings up the app, Postgres, and Redis:
+Committed migrations are SQLite-authored (dev + CI). Production Postgres is
+provisioned with `prisma db push` (schema-driven sync, no migration replay),
+because a single SQLite migration history cannot replay on Postgres. The schema
+is kept Postgres-compatible (no SQLite-only types; JSON stored as `String`).
+See `docs/ERROR.md` (ERR-0004) for background.
 
-```bash
-docker compose up -d --build
-docker compose exec app pnpm prisma db push   # Postgres: schema-driven sync, no migration replay (see ERR-0004)
-```
+## Docker (planned)
 
-The container exposes port `3000`. A separate `cron` service hits `/api/jobs/snapshot` on its schedule, authenticating with `CRON_SECRET`.
+Docker support is tracked in issue #44 and is not yet available. The only
+supported deployment path today is the local dev setup described above.
 
-Volumes:
-- `postgres-data` — DB persistence.
-- `redis-data` — cache persistence (AOF).
+## CI
 
-Backups: a daily `pg_dump` is written to `backups/` and uploaded to S3 if `BACKUP_S3_BUCKET` is set.
+GitHub Actions (`ci.yml`): install → typecheck → lint → test → build on every
+PR. See `.github/workflows/ci.yml`.
 
-## Vercel
+---
 
-1. Import the repo into Vercel.
-2. Add env vars in Project Settings → Environment Variables.
-3. Provision Vercel Postgres + KV from the marketplace; their URLs autopopulate.
-4. **Build command:** `prisma generate && prisma db push && next build`. Committed migrations are
-   SQLite-authored and are **not** replayed on Postgres; `db push` syncs the Postgres schema from
-   `prisma/schema.prisma` directly. (`prisma generate` also runs via the `postinstall` script.)
-5. Cron is wired via `vercel.json`:
-
-```json
-{
-  "crons": [
-    { "path": "/api/cron/snapshot", "schedule": "0 4 * * *" }
-  ]
-}
-```
-
-Cron requests carry a Vercel-signed header; our handler accepts the `x-cron-secret` shared secret.
-
-## CI/CD
-
-GitHub Actions:
-
-- `ci.yml`: install → typecheck → lint → test → build. Runs on every PR.
-- `deploy.yml`: on push to `main`, build and deploy to Vercel (or push the Docker image to GHCR).
-- `lighthouse.yml`: weekly Lighthouse run on production, fails if any score < 90.
-
-## Database migrations
-
-- Dev / CI (SQLite): `pnpm prisma migrate dev` (creates + applies); CI runs `pnpm prisma migrate deploy`
-  to replay committed migrations against a fresh `ci.db`.
-- Prod (Postgres): `pnpm prisma db push` syncs the schema directly. Committed migrations are
-  SQLite-authored and are **not** replayed on Postgres (a single migration history can't serve both
-  engines). A dual Postgres migration history is deferred — see `docs/ERROR.md` (ERR-0004).
-- Destructive migrations require a manual gate: an env var `ALLOW_DESTRUCTIVE_MIGRATIONS=1` must be set for the deploy.
-
-## Rollback
-
-- Vercel: redeploy the previous build from the dashboard.
-- Docker: `docker compose pull && docker compose up -d` with the previous image tag.
-- DB: roll forward with a new migration; never edit a migration that has shipped.
-
-## Monitoring
-
-- `/api/health` returns `200` with `{ db, cache }` liveness. Point an uptime probe at it.
-- Logs ship to stdout in JSON; aggregate with your log provider of choice.
-- Errors should surface via Sentry (DSN in `SENTRY_DSN`, optional).
+> **Vercel:** planned for Phase 7.
