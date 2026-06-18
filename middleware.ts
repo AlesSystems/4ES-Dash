@@ -26,7 +26,9 @@ export default withAuth;
 
 export const config = {
   matcher: [
-    '/',
+    // NOTE: '/' is intentionally NOT protected — it self-gates in app/page.tsx
+    // (dashboard when a viewer resolves, logged-out Landing otherwise).
+    '/onboarding/:path*',
     '/library/:path*',
     '/friends/:path*',
     '/history/:path*',

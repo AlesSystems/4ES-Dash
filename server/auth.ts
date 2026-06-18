@@ -19,6 +19,7 @@ import type { JWT } from 'next-auth/jwt';
 import { getServerSession } from 'next-auth';
 import type { NextRequest } from 'next/server';
 import { getEnv } from '@/server/env';
+import { prisma } from '@/server/db';
 import Steam from 'next-auth-steam';
 
 // ---------------------------------------------------------------------------
@@ -166,6 +167,36 @@ export function buildAuthOptions(req: Request | NextRequest): AuthOptions {
             steamId: (token.steamId as string) ?? '',
           },
         };
+      },
+    },
+
+    events: {
+      /**
+       * Fires after a successful sign-in. Lightweight by design: record
+       * `lastLoginAt` and ensure a `User` row exists. The full onboarding
+       * backfill (profile + games + baseline snapshot) runs separately via
+       * app/onboarding so it never blocks the auth callback. Resilient — any
+       * failure here is swallowed so it can never break sign-in.
+       */
+      async signIn({ user }: { user?: { id?: string } | null }): Promise<void> {
+        const steamId = user?.id;
+        if (!steamId) return;
+        try {
+          const now = new Date();
+          await prisma.user.upsert({
+            where: { steamId },
+            update: { lastLoginAt: now },
+            create: {
+              steamId,
+              personaName: '',
+              avatarUrl: '',
+              createdAt: now,
+              lastLoginAt: now,
+            },
+          });
+        } catch {
+          // Never break sign-in on a bookkeeping failure.
+        }
       },
     },
 
