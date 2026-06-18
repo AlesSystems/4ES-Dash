@@ -15,6 +15,17 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── Enums ─────────────────────────────────────────────────────────────────
+
+// Profile visibility level. Stored as a string by SQLite (no native enum);
+// Postgres (prod) also stores as VARCHAR via `db push`. Default = private
+// per ADR 0002 §4: a new account is hidden until the user opts in to sharing.
+enum Privacy {
+  public
+  friendsOnly
+  private
+}
+
 // ─── Reference tables (upserted on read-through) ───────────────────────────
 
 model User {
@@ -25,6 +36,10 @@ model User {
   createdAt    DateTime
   firstSeenAt  DateTime @default(now())
   lastSyncedAt DateTime @default(now())
+  // ── Phase 6 / multi-user identity (ADR 0002) ──
+  lastLoginAt  DateTime?               // set on each sign-in; null before first login
+  privacy      Privacy  @default(private) // profile visibility; opt-in sharing
+  onboardedAt  DateTime?               // null until first backfill completes (Tasks 06/08)
 
   ownedGames           OwnedGame[]
   playtimeSnapshots    PlaytimeSnapshot[]
