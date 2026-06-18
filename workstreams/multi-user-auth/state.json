@@ -10,8 +10,8 @@
       "title": "ADR: multi-tenancy + Steam OpenID auth",
       "issue": 59,
       "file": "03-tasks/01-adr-multi-tenant-auth.md",
-      "status": "todo",
-      "owner": null,
+      "status": "in-review",
+      "owner": "implementer-sonnet",
       "tests": [],
       "verdict": null,
       "notes": "Tier 0. Source of truth; locks session strategy + privacy default for tasks 02/03. Docs-only."
