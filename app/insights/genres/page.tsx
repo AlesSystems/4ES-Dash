@@ -11,6 +11,13 @@ import { EmptyState } from '@/components/states/EmptyState';
 import { StaleBanner } from '@/components/states/StaleBanner';
 import { GenreChart } from '@/components/insights/GenreChart';
 import { formatHours } from '@/lib/format/playtime';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Genre Breakdown',
+  description:
+    'Explore how your Steam playtime is distributed across game genres and community tags.',
+};
 
 export const dynamic = 'force-dynamic';
 

@@ -10,6 +10,12 @@ import { getIdleFlags } from '@/server/repositories/insights/idle';
 import { EmptyState } from '@/components/states/EmptyState';
 import { DismissFlagButton } from '@/components/insights/DismissFlagButton';
 import { formatHours } from '@/lib/format/playtime';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Idle Detection',
+  description: 'Identify Steam games with unusual playtime spikes that may indicate idle farming.',
+};
 
 export const dynamic = 'force-dynamic';
 
@@ -56,7 +62,7 @@ export default async function IdlePage() {
             Flagged sessions
           </h2>
 
-          <ul className="space-y-3" role="list">
+          <ul className="space-y-3">
             {flags.map((flag) => {
               const fromIso = flag.fromDate.toISOString();
               const toIso = flag.toDate.toISOString();

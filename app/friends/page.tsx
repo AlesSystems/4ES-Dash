@@ -4,6 +4,12 @@ import { EmptyState } from '@/components/states/EmptyState';
 import { StaleBanner } from '@/components/states/StaleBanner';
 import { NowPlayingFriends } from '@/components/friends/NowPlayingFriends';
 import { FriendsList } from '@/components/friends/FriendsList';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Friends',
+  description: 'See which Steam friends are online, away, or in-game right now.',
+};
 
 // Reads live Steam data per request — never prerender at build time.
 export const dynamic = 'force-dynamic';

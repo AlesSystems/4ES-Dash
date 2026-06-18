@@ -19,6 +19,13 @@ import { LibraryHeader } from '@/components/library/LibraryHeader';
 import { LibraryControls } from '@/components/library/LibraryControls';
 import { LibraryResults } from '@/components/library/LibraryResults';
 import { LibraryEmpty } from '@/components/library/LibraryEmpty';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Library',
+  description:
+    'Browse, sort, and filter your entire Steam game library by playtime, status, and more.',
+};
 
 // Reads env + live Steam data per request — never prerender at build time.
 export const dynamic = 'force-dynamic';
