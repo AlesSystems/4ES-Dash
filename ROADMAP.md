@@ -95,12 +95,23 @@ Goal: any Steam account holder can sign in with Steam OpenID, own their data, an
 - [x] Auth UI: "Sign in with Steam" entry point, signed-in user menu, logged-out landing
 - [x] Privacy controls + account settings: `public` / `friends-only` / `private`; re-sync; atomic account & data deletion
 
-## Phase 7 — Deployment & hosting
+## Phase 7 — Deployment & bug fixes
 
-Goal: a frictionless managed-hosting path on top of the self-host (Docker) story shipped in Phase 5.
+Goal: ship the app on Vercel and fix the user-reported bugs and perf issues surfaced after Phase 6 dogfooding. Workstream: [`workstreams/deployment-and-fixes/`](workstreams/deployment-and-fixes/) (issues #85–#92).
 
-- [ ] One-click Vercel deploy button (pre-fills `STEAM_API_KEY`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `DATABASE_URL`, `CRON_SECRET`)
+Deploy:
+
+- [ ] Deploy to Vercel: managed Postgres (provider switch + `prisma db push`), Vercel Cron (`vercel.json`, `Authorization: Bearer` auth), env/callback wiring, one-click Deploy button (#86, absorbs #45)
 - [ ] `docs/DEPLOYMENT.md` Vercel section (env vars, cron, managed Postgres)
+
+Bug fixes & perf:
+
+- [ ] Optimize the slow dashboard: move library-value aggregation off the request path, Suspense-isolate widgets, dedicated Store limiter, cache single-flight (#85)
+- [ ] Add History + Friends to the sidebar nav (#87)
+- [ ] Compare page: resolve side A from the session (not the placeholder `STEAM_ID`) so shared games compute, and never render a raw SteamID as a name (#88, #89)
+- [ ] Genres insight: gate not-yet-onboarded users to onboarding instead of "No genre data yet" until re-sync (#90)
+- [ ] Year in Review: count achievements by real `unlockedAt`, not a snapshot delta (#91)
+- [ ] Browser/tab icon (favicon) matching the brand mark (#92)
 
 ## Stretch goals (post-1.0)
 
