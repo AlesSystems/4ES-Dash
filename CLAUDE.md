@@ -4,9 +4,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-**Pre-alpha, Phase 0.** The repo currently contains documentation and `.claude/` skills only — no `package.json`, `app/`, `prisma/`, or source yet. The first task per [ROADMAP.md](ROADMAP.md) is bootstrapping a Next.js 14+ App Router project. Treat the docs as the spec; treat the code that doesn't exist yet as the work to do.
+**Active, Phases 0–4 shipped; Phase 5 (polish/ship) and Phase 6 (multi-user auth) in flight.** The project is scaffolded and running: Next.js 14 App Router, Prisma, a rate-limited Steam client, Redis/LRU cache, snapshot jobs, and ~60 vitest suites are all in place. Treat the docs as the spec and the open GitHub issues (labelled `phase:5` / `phase:6`) as the current work; check [ROADMAP.md](ROADMAP.md) before starting.
 
-When asked to "build X", first check whether the project has been scaffolded. If not, scaffold the minimum needed for X (don't try to do all of Phase 0 in one PR).
+When asked to "build X", find the matching workstream under `workstreams/` (or open one) and follow the brief → plan → tasks → implementer/reviewer loop below — do not free-hand a feature.
+
+## Non-negotiables (the gate decides "done", not your confidence)
+
+These are not aspirational. An external, deterministic check enforces each one; an agent's belief that code is correct counts for nothing.
+
+- **Test-first (TDD).** Write a failing test that encodes the requirement, watch it fail for the right reason, then implement to green. No implementation before a red test. See the `superpowers:test-driven-development` skill.
+- **The PostToolUse gate is law.** Every `Edit|Write` to a `*.ts`/`*.tsx` file triggers `.claude/hooks/test-gate.sh`, which runs the related vitest tests + `tsc --noEmit` and **blocks (exit 2) on red**. You cannot proceed on a failing change. Never disable or work around it (to pause it deliberately, see [docs/HOOKS.md](docs/HOOKS.md)).
+- **Generator ≠ judge.** The agent that writes code never certifies it. Review comes from a *different* model in a *separate*, read-only context (`.claude/agents/reviewer.md`). Final ground truth is always tooling — tests, types, lint — never an opinion.
+- **Definition of done** (all must hold before a task leaves `in-review`):
+  1. `pnpm lint && pnpm typecheck && pnpm test && pnpm build` all exit 0 locally.
+  2. Every acceptance criterion in the task file is covered by a test that would fail if the behavior regressed.
+  3. The reviewer agent returns `VERDICT: APPROVE` against the task's acceptance criteria.
+  4. Docs updated per the Documentation Rule below; ERR-XXXX appended if a bug was found/fixed.
+  5. The human (`Altan Esmer`) approves and merges the PR. **Only the merge marks a task `done`** — no agent sets its own task to done.
+- **Never commit `STEAM_API_KEY` or any secret.** Server-only; never prefix a server var with `NEXT_PUBLIC_`. Client components hit `/api/*`, never `api.steampowered.com`.
+- **Validate all Steam I/O with zod at the boundary.** Unexpected shape → `SteamApiError({ kind: "schema" })`, never silent coercion. Steam access goes only through the single rate-limited client in `lib/steam/` — never inline `fetch`.
+
+## Agentic workflow (where features come from)
+
+Durable state lives in files, not in an agent's context. A feature flows:
+
+`workstreams/<feature>/00-brief.md` (you write the intent + acceptance criteria) → `01-plan.md` + `02-architecture.md` (orchestrator writes from the brief) → `03-tasks/*.md` (one independently-verifiable task each, with its own acceptance criteria) → **implementer** agent (sonnet, test-first, one task, no architecture calls) → **reviewer** agent (opus, read-only, adversarial) → green suite → your PR review. Status is tracked machine-readably in `state.json`. See [workstreams/README.md](workstreams/README.md).
 
 ## Planned commands
 

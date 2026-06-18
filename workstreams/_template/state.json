@@ -1,0 +1,37 @@
+{
+  "feature": "recently-played-streak-EXAMPLE",
+  "brief": "00-brief.md",
+  "updated": "2026-06-18",
+  "tasks": [
+    {
+      "id": "01",
+      "title": "streak calculation (pure)",
+      "file": "03-tasks/01-streak-calc.md",
+      "status": "todo",
+      "owner": null,
+      "tests": ["tests/unit/streak.test.ts"],
+      "verdict": null,
+      "notes": "contract for tasks 02/03; write the signature first"
+    },
+    {
+      "id": "02",
+      "title": "repository read (snapshots -> streak)",
+      "file": "03-tasks/02-streak-repo.md",
+      "status": "todo",
+      "owner": null,
+      "tests": ["tests/unit/streak-repo.test.ts"],
+      "verdict": null,
+      "notes": "depends on task 01 signature only"
+    },
+    {
+      "id": "03",
+      "title": "Game Detail streak UI (RSC + empty state)",
+      "file": "03-tasks/03-streak-ui.md",
+      "status": "todo",
+      "owner": null,
+      "tests": ["tests/unit/StreakStat.test.tsx"],
+      "verdict": null,
+      "notes": "depends on task 02 return type; no use client"
+    }
+  ]
+}
