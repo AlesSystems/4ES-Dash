@@ -12,7 +12,6 @@ const mockPrisma = vi.hoisted(() => ({
 }));
 
 vi.mock('@/server/db', () => ({ prisma: mockPrisma }));
-vi.mock('@/server/env', () => ({ getEnv: () => ({ STEAM_ID: '76561198000000000' }) }));
 
 const STEAM_ID = '76561198000000000';
 
@@ -29,7 +28,7 @@ beforeEach(() => {
 describe('getIdleFlags', () => {
   it('returns empty when no snapshots', async () => {
     mockPrisma.playtimeSnapshot.findMany.mockResolvedValue([]);
-    expect(await getIdleFlags()).toEqual([]);
+    expect(await getIdleFlags(STEAM_ID)).toEqual([]);
   });
 
   it('returns a spike flag with correct view fields', async () => {
@@ -38,7 +37,7 @@ describe('getIdleFlags', () => {
       snap(730, '2025-01-02T00:00:00.000Z', 800), // delta 800 > 720
     ]);
     mockPrisma.game.findMany.mockResolvedValue([{ appId: 730, name: 'Counter-Strike 2' }]);
-    const flags = await getIdleFlags();
+    const flags = await getIdleFlags(STEAM_ID);
     expect(flags).toHaveLength(1);
     expect(flags[0]!.appId).toBe(730);
     expect(flags[0]!.name).toBe('Counter-Strike 2');
@@ -53,7 +52,7 @@ describe('getIdleFlags', () => {
       { appId: 730, date: toDate, playtimeForever: 800 },
     ]);
     mockPrisma.idleDismissal.findMany.mockResolvedValue([{ appId: 730, fromDate, toDate }]);
-    expect(await getIdleFlags()).toEqual([]);
+    expect(await getIdleFlags(STEAM_ID)).toEqual([]);
   });
 
   it('still returns flag in a NEW window after dismissing a different window', async () => {
@@ -70,7 +69,7 @@ describe('getIdleFlags', () => {
       { appId: 730, fromDate: fromDate1, toDate: toDate1 },
     ]);
     mockPrisma.game.findMany.mockResolvedValue([{ appId: 730, name: 'CS2' }]);
-    const flags = await getIdleFlags();
+    const flags = await getIdleFlags(STEAM_ID);
     // The second pair (toDate1→toDate2) is a new window, not dismissed
     expect(flags.length).toBeGreaterThanOrEqual(1);
     const newFlag = flags.find((f) => f.toDate.getTime() === toDate2.getTime());
@@ -83,7 +82,7 @@ describe('getIdleFlags', () => {
       snap(999, '2025-01-02T00:00:00.000Z', 800),
     ]);
     mockPrisma.game.findMany.mockResolvedValue([]);
-    const flags = await getIdleFlags();
+    const flags = await getIdleFlags(STEAM_ID);
     expect(flags[0]!.name).toBe('App 999');
   });
 });
@@ -93,7 +92,7 @@ describe('dismissIdleFlag', () => {
     const fromDate = new Date('2025-01-01T00:00:00.000Z');
     const toDate = new Date('2025-01-02T00:00:00.000Z');
     mockPrisma.idleDismissal.upsert.mockResolvedValue({});
-    await dismissIdleFlag({ appId: 730, fromDate, toDate });
+    await dismissIdleFlag(STEAM_ID, { appId: 730, fromDate, toDate });
     expect(mockPrisma.idleDismissal.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({

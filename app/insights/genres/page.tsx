@@ -7,6 +7,7 @@
  */
 
 import { getGenreBreakdown } from '@/server/repositories/insights/genres';
+import { getViewerSteamId } from '@/server/auth';
 import { EmptyState } from '@/components/states/EmptyState';
 import { StaleBanner } from '@/components/states/StaleBanner';
 import { GenreChart } from '@/components/insights/GenreChart';
@@ -24,7 +25,8 @@ export const dynamic = 'force-dynamic';
 const SHELL = 'px-4 py-8 sm:px-6 lg:px-10';
 
 export default async function GenresPage() {
-  const { genres, tags, stale, unknownFromUnavailable } = await getGenreBreakdown();
+  const viewerId = await getViewerSteamId();
+  const { genres, tags, stale, unknownFromUnavailable } = await getGenreBreakdown(viewerId);
 
   const hasGenres = genres.slices.length > 0;
   const hasTags = tags !== null && tags.slices.length > 0;

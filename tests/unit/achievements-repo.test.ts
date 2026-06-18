@@ -45,7 +45,7 @@ describe('getGameAchievements – skip metadata when player data is unavailable'
       }),
     );
 
-    const result = await getGameAchievements(APP_ID);
+    const result = await getGameAchievements('76561198000000000', APP_ID);
 
     expect(result.available).toBe(false);
     if (result.available) return;
@@ -58,7 +58,7 @@ describe('getGameAchievements – skip metadata when player data is unavailable'
   it('still returns available achievement data on the happy path (reorder is safe)', async () => {
     // All three endpoints use the default fixture handlers (matching player +
     // schema + global data), so the merge succeeds.
-    const result = await getGameAchievements(APP_ID);
+    const result = await getGameAchievements('76561198000000000', APP_ID);
 
     expect(result.available).toBe(true);
     if (!result.available) return;

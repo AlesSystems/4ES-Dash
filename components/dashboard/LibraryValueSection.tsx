@@ -1,6 +1,7 @@
 import { getLibraryValue } from '@/server/repositories/library-value';
 import { LibraryValueCard } from '@/components/dashboard/LibraryValueCard';
 import { Skeleton } from '@/components/ui/skeleton';
+import { getViewerSteamId } from '@/server/auth';
 
 /**
  * Async server component for the dashboard library-value widget (#29).
@@ -13,7 +14,8 @@ import { Skeleton } from '@/components/ui/skeleton';
  * server components can't be rendered by @testing-library in jsdom.
  */
 export async function LibraryValueSection(): Promise<JSX.Element> {
-  const value = await getLibraryValue();
+  const viewerId = await getViewerSteamId();
+  const value = await getLibraryValue(viewerId);
   return <LibraryValueCard value={value} />;
 }
 

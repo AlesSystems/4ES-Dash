@@ -18,6 +18,7 @@ import type { AuthOptions, Session } from 'next-auth';
 import type { JWT } from 'next-auth/jwt';
 import { getServerSession } from 'next-auth';
 import type { NextRequest } from 'next/server';
+import { getEnv } from '@/server/env';
 import Steam from 'next-auth-steam';
 
 // ---------------------------------------------------------------------------
@@ -213,4 +214,17 @@ export async function getSessionUser(): Promise<{ steamId: string } | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * Resolves the steamId whose "my" data a protected view should render: the
+ * authenticated session user, else the dev / featured-profile fallback
+ * (`env.STEAM_ID`). Middleware guarantees a session on protected routes in
+ * production; the fallback keeps local dev and tests working when no session is
+ * present. Returns '' only if neither a session nor STEAM_ID exists — callers
+ * pass it to repositories which throw MissingSteamIdError on blank input.
+ */
+export async function getViewerSteamId(): Promise<string> {
+  const session = await getSessionUser();
+  return session?.steamId ?? getEnv().STEAM_ID ?? '';
 }

@@ -34,10 +34,13 @@ describe('getEnv', () => {
     expect(() => getEnv()).toThrow(/STEAM_API_KEY/);
   });
 
-  it('throws a clear error when STEAM_ID is missing', async () => {
+  it('treats STEAM_ID as optional (dev/featured fallback) — does not throw when missing', async () => {
+    // Since Phase 6 the session user is "the user"; STEAM_ID is only a
+    // dev/featured-profile fallback, so its absence must NOT crash boot.
     delete process.env.STEAM_ID;
     const { getEnv } = await import('@/server/env');
-    expect(() => getEnv()).toThrow(/STEAM_ID/);
+    expect(() => getEnv()).not.toThrow();
+    expect(getEnv().STEAM_ID).toBeUndefined();
   });
 
   it('throws when STEAM_ID is not a 17-digit string', async () => {

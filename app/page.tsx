@@ -20,6 +20,7 @@ import { getLevel } from '@/server/repositories/level';
 import { getRecentlyPlayed } from '@/server/repositories/recently-played';
 import { getAchievementProgress } from '@/server/repositories/achievements';
 import { getFirstSeenDates } from '@/server/repositories/snapshots';
+import { getViewerSteamId } from '@/server/auth';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -34,12 +35,28 @@ export const dynamic = 'force-dynamic';
 const SHELL = 'px-4 py-8 sm:px-6 lg:px-10';
 
 export default async function HomePage() {
+  // Resolve the viewer's steamId: authenticated session user, else the dev
+  // / featured-profile fallback (env.STEAM_ID). See server/auth.ts.
+  const featuredId = await getViewerSteamId();
+
+  if (!featuredId) {
+    return (
+      <main className={SHELL}>
+        <h1 className="sr-only">Dashboard</h1>
+        <EmptyState
+          title="No profile configured"
+          description="Set STEAM_ID in your environment to see your dashboard."
+        />
+      </main>
+    );
+  }
+
   // Profile gates the page: a private library degrades to a designed empty state.
   let profile;
   let games;
   let profileStale = false;
   try {
-    const data = await getProfile();
+    const data = await getProfile(featuredId);
     profile = data.profile;
     games = data.games;
     profileStale = data.stale;
@@ -70,12 +87,12 @@ export default async function HomePage() {
   ).map((g) => g.appId);
 
   const [level, recent, achievements, firstSeen] = await Promise.all([
-    getLevel().catch(() => ({ level: null, stale: false })),
-    getRecentlyPlayed(),
-    getAchievementProgress(achievementAppIds),
+    getLevel(featuredId).catch(() => ({ level: null, stale: false })),
+    getRecentlyPlayed(featuredId),
+    getAchievementProgress(featuredId, achievementAppIds),
     // Inferred acquiredAt for the backlog's "oldest unplayed" (#28). Degrades to
     // no dates if the snapshot table is empty or unreadable — never blocks.
-    getFirstSeenDates().catch(() => new Map<number, string>()),
+    getFirstSeenDates(featuredId).catch(() => new Map<number, string>()),
   ]);
 
   const topGames = topGamesByPlaytime(games, 5).map((g) => ({

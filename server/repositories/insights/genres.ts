@@ -7,6 +7,7 @@
 
 import { prisma } from '@/server/db';
 import { getEnv } from '@/server/env';
+import { requireSteamId } from '@/server/repositories/require-steam-id';
 import { cache, cacheKey, TTL } from '@/server/cache';
 import { getGameStoreMetadata } from '@/server/repositories/store';
 import { getSteamSpyData } from '@/lib/steam/steamspy-client';
@@ -30,8 +31,8 @@ export interface GenreBreakdownResult {
  * - Tag data comes from SteamSpy only when ENABLE_STEAMSPY=1 (cached at TTL.steamSpy).
  * - Unavailable metadata contributes an empty-label item that lands in 'Unknown'.
  */
-export async function getGenreBreakdown(steamId?: string): Promise<GenreBreakdownResult> {
-  const id = steamId ?? getEnv().STEAM_ID;
+export async function getGenreBreakdown(steamId: string): Promise<GenreBreakdownResult> {
+  const id = requireSteamId(steamId, 'getGenreBreakdown');
   const env = getEnv();
 
   const ownedGames = await prisma.ownedGame.findMany({

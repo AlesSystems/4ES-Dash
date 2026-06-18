@@ -16,6 +16,7 @@
 import { prisma } from '@/server/db';
 import { getProfile } from '@/server/repositories/profile';
 import { getGameAchievements } from '@/server/repositories/achievements';
+import { getEnv } from '@/server/env';
 import { topGamesByPlaytime } from '@/lib/games/select';
 import type { OwnedGame } from '@/lib/steam/schemas';
 
@@ -58,18 +59,29 @@ export function clampPlaytime(
 }
 
 /**
- * Run the snapshot job for the configured Steam user. Writes a `JobRun` row for
- * observability (running → ok/error). Throws on an unrecoverable failure (e.g. a
- * private profile) after recording the failed `JobRun`; the cron route maps that
- * to a 500.
+ * Run the snapshot job for the featured Steam user (getEnv().STEAM_ID).
+ * Writes a `JobRun` row for observability (running → ok/error).
+ * Throws on an unrecoverable failure (e.g. a private profile) after recording
+ * the failed `JobRun`; the cron route maps that to a 500.
+ *
+ * Task 04 note: getEnv().STEAM_ID is the featured-profile default used at this
+ * call site. Task 05 will replace this with the session user's steamId once
+ * multi-user auth is wired. Snapshotting all users is future work (see ADR).
  */
 export async function runSnapshot(): Promise<SnapshotResult> {
+  // Featured/dev default — the call site is responsible for supplying steamId.
+  // STEAM_ID is now optional in env; guard gracefully if absent.
+  const featuredId = getEnv().STEAM_ID;
+  if (!featuredId) {
+    throw new Error('STEAM_ID is not configured — cannot run snapshot without a target steamId');
+  }
+
   const job = await prisma.jobRun.create({
     data: { name: 'snapshot', status: 'running' },
   });
 
   try {
-    const { profile, games } = await getProfile();
+    const { profile, games } = await getProfile(featuredId);
     const steamId = profile.steamId;
     const dayKey = utcDayKey();
 
@@ -187,7 +199,7 @@ async function snapshotAchievements(
 
   let written = 0;
   for (const game of candidates) {
-    const result = await getGameAchievements(game.appId);
+    const result = await getGameAchievements(steamId, game.appId);
     if (!result.available) continue;
     await prisma.achievementSnapshot.upsert({
       where: { steamId_appId_date: { steamId, appId: game.appId, date: dayKey } },

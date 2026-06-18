@@ -17,6 +17,7 @@ import {
   getAvailableReviewYears,
   getYearInReview,
 } from '@/server/repositories/insights/year-in-review';
+import { getViewerSteamId } from '@/server/auth';
 import { EmptyState } from '@/components/states/EmptyState';
 import { ReviewCover } from '@/components/review/ReviewCover';
 import { TopGamesSection } from '@/components/review/TopGamesSection';
@@ -42,9 +43,10 @@ export default async function YearInReviewPage({ params }: ReviewPageProps) {
     notFound();
   }
 
+  const featuredId = await getViewerSteamId();
   const [availableYears, review] = await Promise.all([
-    getAvailableReviewYears(),
-    getYearInReview(year),
+    getAvailableReviewYears(featuredId),
+    getYearInReview(featuredId, year),
   ]);
 
   // Year not in available list OR nothing happened that year (no playtime, no

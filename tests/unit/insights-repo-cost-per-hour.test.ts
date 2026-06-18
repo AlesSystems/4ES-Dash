@@ -24,7 +24,7 @@ beforeEach(() => {
 
 describe('getCostPerHour', () => {
   it('returns empty result for no games', async () => {
-    const { result } = await getCostPerHour();
+    const { result } = await getCostPerHour('76561198000000000');
     expect(result.ranked).toHaveLength(0);
     expect(result.freeGames).toHaveLength(0);
     expect(result.excludedNoPrice).toBe(0);
@@ -45,7 +45,7 @@ describe('getCostPerHour', () => {
       },
       stale: false,
     });
-    const { result } = await getCostPerHour();
+    const { result } = await getCostPerHour('76561198000000000');
     expect(result.ranked).toHaveLength(1);
     // Uses the current store finalCents, not any imported price.
     expect(result.ranked[0]!.priceCents).toBe(1499);
@@ -57,7 +57,7 @@ describe('getCostPerHour', () => {
     mockPrisma.ownedGame.findMany.mockResolvedValue([{ appId: 570, playtimeForever: 100 }]);
     mockPrisma.game.findMany.mockResolvedValue([{ appId: 570, name: 'Dota 2' }]);
     mockGetPrice.mockResolvedValue({ available: true, data: null, stale: false });
-    const { result } = await getCostPerHour();
+    const { result } = await getCostPerHour('76561198000000000');
     expect(result.freeGames).toHaveLength(1);
     expect(result.freeGames[0]!.name).toBe('Dota 2');
   });
@@ -66,7 +66,7 @@ describe('getCostPerHour', () => {
     mockPrisma.ownedGame.findMany.mockResolvedValue([{ appId: 999, playtimeForever: 100 }]);
     mockPrisma.game.findMany.mockResolvedValue([{ appId: 999, name: 'Unknown Game' }]);
     mockGetPrice.mockResolvedValue({ available: false, reason: 'metadata-unavailable' });
-    const { result } = await getCostPerHour();
+    const { result } = await getCostPerHour('76561198000000000');
     expect(result.excludedNoPrice).toBe(1);
   });
 
@@ -84,7 +84,7 @@ describe('getCostPerHour', () => {
       },
       stale: false,
     });
-    const { result } = await getCostPerHour();
+    const { result } = await getCostPerHour('76561198000000000');
     expect(result.freeGames).toHaveLength(1);
   });
 
@@ -92,7 +92,7 @@ describe('getCostPerHour', () => {
     mockPrisma.ownedGame.findMany.mockResolvedValue([{ appId: 12345, playtimeForever: 60 }]);
     mockPrisma.game.findMany.mockResolvedValue([]);
     mockGetPrice.mockResolvedValue({ available: true, data: null, stale: false });
-    const { result } = await getCostPerHour();
+    const { result } = await getCostPerHour('76561198000000000');
     expect(result.freeGames[0]!.name).toBe('App 12345');
   });
 
@@ -110,7 +110,7 @@ describe('getCostPerHour', () => {
       },
       stale: true,
     });
-    const { stale } = await getCostPerHour();
+    const { stale } = await getCostPerHour('76561198000000000');
     expect(stale).toBe(true);
   });
 });

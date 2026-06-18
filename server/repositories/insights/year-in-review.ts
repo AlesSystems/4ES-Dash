@@ -6,15 +6,15 @@
  */
 
 import { prisma } from '@/server/db';
-import { getEnv } from '@/server/env';
+import { requireSteamId } from '@/server/repositories/require-steam-id';
 import { availableYears, computeYearInReview, type YearInReview } from '@/lib/insights';
 
 /**
  * Distinct UTC years with ≥1 playtime snapshot for the user, sorted DESC.
  * Returns [] when no snapshots exist.
  */
-export async function getAvailableReviewYears(steamId?: string): Promise<number[]> {
-  const id = steamId ?? getEnv().STEAM_ID;
+export async function getAvailableReviewYears(steamId: string): Promise<number[]> {
+  const id = requireSteamId(steamId, 'getAvailableReviewYears');
 
   const rows = await prisma.playtimeSnapshot.findMany({
     where: { steamId: id },
@@ -31,8 +31,8 @@ export async function getAvailableReviewYears(steamId?: string): Promise<number[
  *
  * Returns totals of 0 + empty topGames when the year has no data.
  */
-export async function getYearInReview(year: number, steamId?: string): Promise<YearInReview> {
-  const id = steamId ?? getEnv().STEAM_ID;
+export async function getYearInReview(steamId: string, year: number): Promise<YearInReview> {
+  const id = requireSteamId(steamId, 'getYearInReview');
 
   const [playtimeRows, achievementRows] = await Promise.all([
     prisma.playtimeSnapshot.findMany({

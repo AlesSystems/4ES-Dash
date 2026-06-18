@@ -69,7 +69,7 @@ describe('getLibraryValue', () => {
         }),
       );
 
-    const result = await getLibraryValue();
+    const result = await getLibraryValue('76561198000000000');
 
     expect(result.totalMinor).toBe(3498); // 2999 + 499
     expect(result.pricedCount).toBe(2);
@@ -98,7 +98,7 @@ describe('getLibraryValue', () => {
       )
       .mockResolvedValueOnce(available(null)); // free game
 
-    const result = await getLibraryValue();
+    const result = await getLibraryValue('76561198000000000');
 
     expect(result.totalMinor).toBe(999); // free game contributes 0
     expect(result.pricedCount).toBe(1);
@@ -125,7 +125,7 @@ describe('getLibraryValue', () => {
       )
       .mockResolvedValueOnce(unavailable('metadata-unavailable'));
 
-    const result = await getLibraryValue();
+    const result = await getLibraryValue('76561198000000000');
 
     expect(result.totalMinor).toBe(1499);
     expect(result.pricedCount).toBe(1);
@@ -162,7 +162,7 @@ describe('getLibraryValue', () => {
         }),
       );
 
-    const result = await getLibraryValue();
+    const result = await getLibraryValue('76561198000000000');
 
     // First priced result is GBP (index 1 — index 0 was unavailable)
     expect(result.currency).toBe('GBP');
@@ -201,7 +201,7 @@ describe('getLibraryValue', () => {
         ),
       );
 
-    const result = await getLibraryValue();
+    const result = await getLibraryValue('76561198000000000');
 
     expect(result.stale).toBe(true);
   });
@@ -217,7 +217,7 @@ describe('getLibraryValue', () => {
       .mockResolvedValueOnce(available(null)) // free
       .mockResolvedValueOnce(unavailable('metadata-unavailable')); // missing
 
-    const result = await getLibraryValue();
+    const result = await getLibraryValue('76561198000000000');
 
     expect(result.totalMinor).toBe(0);
     expect(result.currency).toBe('');
@@ -234,7 +234,7 @@ describe('getLibraryValue', () => {
       stale: false,
     });
 
-    const result = await getLibraryValue();
+    const result = await getLibraryValue('76561198000000000');
 
     expect(result.totalMinor).toBe(0);
     expect(result.pricedCount).toBe(0);

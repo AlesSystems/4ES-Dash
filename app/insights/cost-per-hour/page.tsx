@@ -6,6 +6,7 @@
  */
 
 import { getCostPerHour } from '@/server/repositories/insights/cost-per-hour';
+import { getViewerSteamId } from '@/server/auth';
 import { EmptyState } from '@/components/states/EmptyState';
 import { StaleBanner } from '@/components/states/StaleBanner';
 import { formatHours } from '@/lib/format/playtime';
@@ -37,7 +38,8 @@ function formatMoney(cents: number, currency: string): string {
 }
 
 export default async function CostPerHourPage() {
-  const { result, stale } = await getCostPerHour();
+  const viewerId = await getViewerSteamId();
+  const { result, stale } = await getCostPerHour(viewerId);
   const { ranked, freeGames, excludedNoPlaytime, excludedNoPrice } = result;
 
   const isEmpty = ranked.length === 0 && freeGames.length === 0;

@@ -11,7 +11,7 @@
  */
 
 import { prisma } from '@/server/db';
-import { getEnv } from '@/server/env';
+import { requireSteamId } from '@/server/repositories/require-steam-id';
 import { getGameStorePrice } from '@/server/repositories/store';
 import {
   rankCostPerHour,
@@ -27,9 +27,9 @@ import { isAvailable } from '@/lib/result';
  * paid with the store's finalCents + currency.
  */
 export async function getCostPerHour(
-  steamId?: string,
+  steamId: string,
 ): Promise<{ result: CostPerHourResult; stale: boolean }> {
-  const id = steamId ?? getEnv().STEAM_ID;
+  const id = requireSteamId(steamId, 'getCostPerHour');
 
   const ownedGames = await prisma.ownedGame.findMany({
     where: { steamId: id },

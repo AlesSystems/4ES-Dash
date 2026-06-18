@@ -20,7 +20,7 @@ beforeEach(() => {
 describe('getAvailableReviewYears', () => {
   it('returns [] when no snapshots', async () => {
     mockPrisma.playtimeSnapshot.findMany.mockResolvedValue([]);
-    expect(await getAvailableReviewYears()).toEqual([]);
+    expect(await getAvailableReviewYears('76561198000000000')).toEqual([]);
   });
 
   it('returns distinct years DESC from snapshot dates', async () => {
@@ -29,7 +29,7 @@ describe('getAvailableReviewYears', () => {
       { date: new Date('2025-06-15T00:00:00.000Z') },
       { date: new Date('2024-11-01T00:00:00.000Z') },
     ]);
-    const years = await getAvailableReviewYears();
+    const years = await getAvailableReviewYears('76561198000000000');
     expect(years).toEqual([2025, 2024]);
   });
 
@@ -47,7 +47,7 @@ describe('getYearInReview', () => {
     mockPrisma.playtimeSnapshot.findMany.mockResolvedValue([]);
     mockPrisma.achievementSnapshot.findMany.mockResolvedValue([]);
     mockPrisma.game.findMany.mockResolvedValue([]);
-    const result = await getYearInReview(2025);
+    const result = await getYearInReview('76561198000000000', 2025);
     expect(result).toEqual({ year: 2025, totalMinutes: 0, topGames: [], achievementsUnlocked: 0 });
   });
 
@@ -60,7 +60,7 @@ describe('getYearInReview', () => {
     ]);
     mockPrisma.achievementSnapshot.findMany.mockResolvedValue([]);
     mockPrisma.game.findMany.mockResolvedValue([{ appId: 730, name: 'Counter-Strike 2' }]);
-    const result = await getYearInReview(2025);
+    const result = await getYearInReview('76561198000000000', 2025);
     const cs2 = result.topGames.find((g) => g.appId === 730);
     const unknown = result.topGames.find((g) => g.appId === 999);
     expect(cs2?.name).toBe('Counter-Strike 2');

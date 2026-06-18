@@ -2,6 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { getProfile } from '@/server/repositories/profile';
 import { getLevel } from '@/server/repositories/level';
+import { getViewerSteamId } from '@/server/auth';
 import { isSteamApiError } from '@/lib/steam/errors';
 import { formatHours } from '@/lib/format/playtime';
 import { NavLinks } from './NavLinks';
@@ -35,15 +36,16 @@ export async function AppHeader(): Promise<JSX.Element> {
   let totalPlaytimeDisplay = PLACEHOLDER_VALUE;
 
   try {
+    const featuredId = await getViewerSteamId();
     const [profileResult, levelResult] = await Promise.all([
-      getProfile().catch((err: unknown) => {
+      getProfile(featuredId).catch((err: unknown) => {
         // isSteamApiError is a narrowing helper — we degrade on any error here.
         if (!isSteamApiError(err)) {
           // Unknown error: still degrade
         }
         return null;
       }),
-      getLevel().catch(() => null),
+      getLevel(featuredId).catch(() => null),
     ]);
 
     if (profileResult !== null) {

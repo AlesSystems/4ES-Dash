@@ -6,7 +6,7 @@
  */
 
 import { prisma } from '@/server/db';
-import { getEnv } from '@/server/env';
+import { requireSteamId } from '@/server/repositories/require-steam-id';
 import { detectIdleSpikes, DEFAULT_IDLE_THRESHOLD_MINUTES, type IdleFlag } from '@/lib/insights';
 
 export interface IdleFlagView {
@@ -24,10 +24,10 @@ export interface IdleFlagView {
  * with the same appId, fromDate, and toDate (exact epoch-ms equality).
  */
 export async function getIdleFlags(
-  steamId?: string,
+  steamId: string,
   thresholdMinutes?: number,
 ): Promise<IdleFlagView[]> {
-  const id = steamId ?? getEnv().STEAM_ID;
+  const id = requireSteamId(steamId, 'getIdleFlags');
 
   const [snapshotRows, dismissalRows] = await Promise.all([
     prisma.playtimeSnapshot.findMany({
@@ -78,10 +78,10 @@ export async function getIdleFlags(
  * Idempotent — upserting with empty update means re-dismissing is a no-op.
  */
 export async function dismissIdleFlag(
+  steamId: string,
   input: { appId: number; fromDate: Date; toDate: Date },
-  steamId?: string,
 ): Promise<void> {
-  const id = steamId ?? getEnv().STEAM_ID;
+  const id = requireSteamId(steamId, 'dismissIdleFlag');
 
   await prisma.idleDismissal.upsert({
     where: {

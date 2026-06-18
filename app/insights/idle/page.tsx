@@ -7,6 +7,7 @@
  */
 
 import { getIdleFlags } from '@/server/repositories/insights/idle';
+import { getViewerSteamId } from '@/server/auth';
 import { EmptyState } from '@/components/states/EmptyState';
 import { DismissFlagButton } from '@/components/insights/DismissFlagButton';
 import { formatHours } from '@/lib/format/playtime';
@@ -30,7 +31,8 @@ function formatDateRange(from: Date, to: Date): string {
 }
 
 export default async function IdlePage() {
-  const flags = await getIdleFlags();
+  const viewerId = await getViewerSteamId();
+  const flags = await getIdleFlags(viewerId);
 
   return (
     <main className={SHELL}>

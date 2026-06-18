@@ -8,7 +8,7 @@
 
 import { prisma } from '@/server/db';
 import { getProfile } from '@/server/repositories/profile';
-import { getEnv } from '@/server/env';
+import { requireSteamId } from '@/server/repositories/require-steam-id';
 import type { LibraryGame } from '@/lib/games/sort';
 
 /** A single playtime snapshot row, in shape for time-series aggregation (#27). */
@@ -22,9 +22,12 @@ export interface PlaytimeSnapshotRow {
  * The first date each owned app appeared in a snapshot → inferred `acquiredAt`.
  * Returns a map of `appId → "YYYY-MM-DD"`. Apps never snapshotted are absent
  * (their `acquiredAt` stays null — never fabricated).
+ *
+ * @param steamId - Required. Pass getEnv().STEAM_ID at the call site for the
+ *   featured/dev default — never read env.STEAM_ID inside this repository.
  */
-export async function getFirstSeenDates(steamId?: string): Promise<Map<number, string>> {
-  const id = steamId ?? getEnv().STEAM_ID;
+export async function getFirstSeenDates(steamId: string): Promise<Map<number, string>> {
+  const id = requireSteamId(steamId, 'getFirstSeenDates');
   const rows = await prisma.playtimeSnapshot.groupBy({
     by: ['appId'],
     where: { steamId: id },
@@ -42,13 +45,17 @@ export async function getFirstSeenDates(steamId?: string): Promise<Map<number, s
  * the library's `sort=added`. Games owned before snapshotting began keep
  * `acquiredAt: null`, which the library UI surfaces with a "dates may be missing"
  * note (app/library/page.tsx). A drop-in replacement for `getProfile()` on that page.
+ *
+ * @param steamId - Required. Pass getEnv().STEAM_ID at the call site for the
+ *   featured/dev default — never read env.STEAM_ID inside this repository.
  */
-export async function getLibraryWithAcquisition(): Promise<{
+export async function getLibraryWithAcquisition(steamId: string): Promise<{
   games: LibraryGame[];
   stale: boolean;
 }> {
-  const { games, stale } = await getProfile();
-  const firstSeen = await getFirstSeenDates();
+  const id = requireSteamId(steamId, 'getLibraryWithAcquisition');
+  const { games, stale } = await getProfile(id);
+  const firstSeen = await getFirstSeenDates(id);
   const withDates: LibraryGame[] = games.map((g) => ({
     ...g,
     acquiredAt: firstSeen.get(g.appId) ?? null,
@@ -57,11 +64,14 @@ export async function getLibraryWithAcquisition(): Promise<{
 }
 
 /**
- * Raw playtime snapshot rows for the configured user, oldest-first. The pure
+ * Raw playtime snapshot rows for the given user, oldest-first. The pure
  * weekly/monthly bucketing lives in `lib/history/aggregate.ts` (#27).
+ *
+ * @param steamId - Required. Pass getEnv().STEAM_ID at the call site for the
+ *   featured/dev default — never read env.STEAM_ID inside this repository.
  */
-export async function getPlaytimeSnapshots(steamId?: string): Promise<PlaytimeSnapshotRow[]> {
-  const id = steamId ?? getEnv().STEAM_ID;
+export async function getPlaytimeSnapshots(steamId: string): Promise<PlaytimeSnapshotRow[]> {
+  const id = requireSteamId(steamId, 'getPlaytimeSnapshots');
   return prisma.playtimeSnapshot.findMany({
     where: { steamId: id },
     select: { appId: true, date: true, playtimeForever: true },
