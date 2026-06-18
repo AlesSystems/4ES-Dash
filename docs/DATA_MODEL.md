@@ -25,6 +25,14 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Profile visibility level. Stored as TEXT in SQLite (no native enum type);
+// Postgres (prod via db push) stores as VARCHAR. Added in Phase 6 / ADR 0002.
+enum Privacy {
+  public
+  friendsOnly
+  private
+}
+
 model User {
   steamId      String   @id          // 17-digit string, 64-bit Steam ID
   personaName  String
@@ -33,6 +41,10 @@ model User {
   createdAt    DateTime
   firstSeenAt  DateTime @default(now())
   lastSyncedAt DateTime @default(now())
+  // Phase 6 / multi-user identity (ADR 0002 §2, §4):
+  lastLoginAt  DateTime?               // updated on every sign-in; null before first login
+  privacy      Privacy  @default(private) // profile visibility; default=private per ADR 0002 §4
+  onboardedAt  DateTime?               // null until first backfill completes (Tasks 06/08)
 
   ownedGames           OwnedGame[]
   playtimeSnapshots    PlaytimeSnapshot[]
@@ -149,6 +161,9 @@ model JobRun {
 - **`acquiredAt` is inferred, not sourced.** The official Steam Web API (`GetOwnedGames`) does not return when a game was added to the library. `acquiredAt` is populated the first time the game appears in a nightly snapshot run. Games that existed in the library before snapshotting started will have `acquiredAt = null`.
 - **`ManualGameData` is separate from `OwnedGame` by design.** User-supplied price-paid and acquisition data (#40) live in their own table so the inferred `OwnedGame.acquiredAt` (first-snapshot date) is never silently overwritten by an import. Cost-per-hour logic prefers the real `pricePaidCents` when present, falling back to current store price. `pricePaidCents` is in minor units (e.g. cents for USD); `currency` is ISO 4217.
 - **`IdleDismissal` is keyed by the exact spike window (#37).** The composite PK is `(steamId, appId, fromDate, toDate)`. This means dismissing one idle-detection flag for a specific playtime spike window never suppresses a _different_ spike (different window) on the same game — each new anomaly surfaces independently. The `@@index([steamId, appId])` speeds up the common lookup: "are any dismissals recorded for this game?"
+- **`Privacy` enum (Phase 6, ADR 0002 §4).** Three levels: `public`, `friendsOnly`, `private`. SQLite stores it as `TEXT`; Postgres (prod) as `VARCHAR`. Default is `private` — new accounts are hidden until the user opts in to sharing, consistent with GDPR data-minimization. No `Account`/`Session`/`VerificationToken` tables are added; ADR 0002 §2 locks JWT sessions (no DB session table) to keep the free-tier DB small.
+- **`lastLoginAt` / `onboardedAt` are nullable.** `lastLoginAt` is null before first sign-in; it is set on every sign-in by next-auth's `signIn` callback (Task 02). `onboardedAt` is null until the first backfill completes (Tasks 06/08); it gates "welcome" UI prompts.
+- **Snapshot tables are multi-user-ready.** `PlaytimeSnapshot`, `AchievementSnapshot`, `OwnedGame`, `ManualGameData`, and `IdleDismissal` all have `steamId` in their compound primary keys and `@@index` on `steamId` where appropriate. No extra index was added in this migration — the existing compound PKs already satisfy per-user queries. The legacy single `STEAM_ID` row simply becomes a normal `User` row after migration; no data is lost and no FK re-wiring is needed.
 
 ## Derived queries
 
@@ -161,6 +176,7 @@ model JobRun {
 - Migrations are written via `prisma migrate dev` and committed with the PR that needs them.
 - Once merged to `main`, migrations are immutable. To fix a mistake, write a follow-up migration.
 - **Phase 4 migration** (`prisma/migrations/20260617101604_phase4_insights/`) added `ManualGameData` and `IdleDismissal`. This migration is immutable.
+- **Phase 6 migration** (`prisma/migrations/20260618153917_multi_user_identity/`) added the `Privacy` enum and three new `User` fields (`lastLoginAt`, `privacy`, `onboardedAt`). SQLite represents the enum as `TEXT NOT NULL DEFAULT 'private'`. Existing `User` rows receive `privacy = 'private'` automatically. This migration is immutable once merged.
 - Destructive migrations (DROP, type change) require an explicit note in the PR description and a backup step in the deploy runbook.
 - **Pinned to Prisma 6.x** (`prisma-client-js` generator). Prisma 7 mandates the new `prisma-client` generator with a required custom output path and driver adapters — deferred to keep the foundation low-risk. See `docs/ERROR.md` (ERR-0004).
 - **Committed migrations are SQLite-authored** (dev + CI). Production Postgres is provisioned with `prisma db push` (schema-driven, no migration replay), because a single SQLite migration history cannot replay on Postgres. The schema is kept Postgres-compatible (no SQLite-only types, JSON stored as `String`). See `docs/DEPLOYMENT.md`.
@@ -174,3 +190,4 @@ model JobRun {
 
 - We store the user's `steamId`, `personaName`, and avatar URL. Nothing else identifies them.
 - A user can purge their data by deleting their `User` row; cascades wipe everything tied to that `steamId`.
+- Profile visibility is controlled by the `privacy` field (`public` | `friendsOnly` | `private`). Default is `private` (ADR 0002 §4). The authorization layer (Task 05 / `server/authz.ts`) enforces this at query time; the repository layer always receives an explicit `steamId` argument and never falls back to a global owner.

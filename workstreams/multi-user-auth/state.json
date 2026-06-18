@@ -21,22 +21,22 @@
       "title": "next-auth + Steam OpenID provider",
       "issue": 60,
       "file": "03-tasks/02-nextauth-steam-openid.md",
-      "status": "todo",
-      "owner": null,
+      "status": "in-review",
+      "owner": "implementer-sonnet",
       "tests": ["tests/unit/auth.test.ts"],
       "verdict": null,
-      "notes": "Tier 1. Depends on 01 (session strategy). Establishes session.user.steamId; blocks 04/05/06/07."
+      "notes": "Tier 1. Depends on 01 (session strategy). Establishes session.user.steamId; blocks 04/05/06/07. FIXED (reviewer blockers): replaced broken type:oauth provider with next-auth-steam; added verifySteamOpenId (direct fetch check_authentication POST); route handler updated to per-request buildAuthOptions(req) pattern. Security regression: 4 tests in verifySteamOpenId suite covering is_valid:true acceptance, is_valid:false rejection, domain forgery rejection, and HTTP error handling."
     },
     {
       "id": "03",
       "title": "Prisma — next-auth tables + per-user identity",
       "issue": 61,
       "file": "03-tasks/03-prisma-auth-identity.md",
-      "status": "todo",
-      "owner": null,
+      "status": "in-review",
+      "owner": "implementer-sonnet",
       "tests": [],
       "verdict": null,
-      "notes": "Tier 1. Depends on 01. One new migration; coordinate with #24 so migrations don't collide."
+      "notes": "Privacy enum (public/friendsOnly/private) + User fields (lastLoginAt, privacy @default(private), onboardedAt). Migration: 20260618153917_multi_user_identity. No Account/Session/VerificationToken per ADR 0002 §2 (JWT sessions). Full gate green: 71 test files, 689 tests, tsc, lint, build all pass."
     },
     {
       "id": "04",

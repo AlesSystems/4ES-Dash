@@ -12,6 +12,11 @@ const EnvSchema = z.object({
   // 17-digit 64-bit SteamID as a string — JS Number can't hold it precisely.
   STEAM_ID: z.string().regex(/^\d{17}$/, 'must be a 17-digit SteamID string'),
   STEAM_API_KEY: z.string().min(1, 'is required'),
+  // next-auth (Auth.js) — server-only secrets, never NEXT_PUBLIC_. See ADR 0002.
+  // NEXTAUTH_SECRET signs/encrypts the JWT session cookie; NEXTAUTH_URL is the
+  // canonical origin used to build OpenID return_to / callback URLs.
+  NEXTAUTH_SECRET: z.string().min(1, 'is required'),
+  NEXTAUTH_URL: z.string().url(),
   DATABASE_URL: z.string().min(1).default('file:./dev.db'),
   REDIS_URL: z.string().url().optional(),
   // Required in Phase 2+ (cron routes); optional during Phase 0–1 so dev needs no cron setup.
