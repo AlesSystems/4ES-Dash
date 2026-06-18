@@ -80,8 +80,14 @@ Goal: derived analytics that feel like a personal Wrapped.
 - [ ] Error boundaries with retry
 - [ ] Lighthouse > 90 on all categories
 - [ ] Docker image + docker-compose
-- [ ] One-click Vercel deploy button
-- [ ] Documentation pass: README, setup, screenshots
+- [ ] Documentation pass: README, setup, screenshots (local + Docker paths)
+
+## Phase 7 — Deployment & hosting
+
+Goal: a frictionless managed-hosting path on top of the self-host (Docker) story shipped in Phase 5.
+
+- [ ] One-click Vercel deploy button (pre-fills `STEAM_API_KEY`, `STEAM_ID`, `DATABASE_URL`, `CRON_SECRET`)
+- [ ] `docs/DEPLOYMENT.md` Vercel section (env vars, cron, managed Postgres)
 
 ## Stretch goals (post-1.0)
 
