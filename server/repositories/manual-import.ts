@@ -6,7 +6,7 @@
  */
 
 import { prisma } from '@/server/db';
-import { getEnv } from '@/server/env';
+import { requireSteamId } from '@/server/repositories/require-steam-id';
 import type { ManualGameImportRow } from '@/lib/zod/api/import';
 
 export type { ManualGameImportRow };
@@ -19,10 +19,10 @@ export type { ManualGameImportRow };
  * @returns The number of rows processed (= rows.length on success).
  */
 export async function importManualGameData(
+  steamId: string,
   rows: ManualGameImportRow[],
-  steamId?: string,
 ): Promise<{ imported: number }> {
-  const id = steamId ?? getEnv().STEAM_ID;
+  const id = requireSteamId(steamId, 'importManualGameData');
 
   await prisma.$transaction(
     rows.map((row) =>

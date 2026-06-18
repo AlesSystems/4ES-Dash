@@ -47,6 +47,17 @@ Rate limit notes for the Store API:
 
 ## Data layer
 
+> **Session-scoped (Phase 6).** Every repository function takes `steamId: string`
+> as a **required** argument — there is no global owner. A blank/missing
+> `steamId` throws the typed `MissingSteamIdError` (`server/repositories/require-steam-id.ts`),
+> never a silent fallback. `env.STEAM_ID` is **optional** and lives ONLY at call
+> sites (pages / route handlers / jobs) as the dev / featured-profile default
+> (passed as `getEnv().STEAM_ID ?? ''`); it is never read inside
+> `server/repositories/**`. The authenticated session user (`getSessionUser()`)
+> is the real source of the `steamId` — see ADR 0002 and Task 05's authz layer.
+> Cache keys stay `steam:<endpoint>:<steamId>[:<appid>]`, so two SteamIDs are
+> cache-isolated (proven by `tests/unit/repositories-isolation.test.ts`).
+
 The following endpoints are Zod-parsed, rate-limited, and cached via `server/repositories/*`:
 
 | Function (`lib/steam`)              | Steam endpoint                              | Repository                          | TTL (`ttl.ts`)        |

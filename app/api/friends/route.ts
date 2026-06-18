@@ -1,6 +1,7 @@
 import { withErrorBoundary } from '@/server/api';
 import { getFriends } from '@/server/repositories/friends';
 import { FriendsResponse } from '@/lib/zod/api/friends';
+import { getViewerSteamId } from '@/server/auth';
 
 /**
  * Opt out of static prerendering — this route reads env vars and live data
@@ -20,7 +21,8 @@ export const dynamic = 'force-dynamic';
  * Private friend list → SteamApiError({ kind: 'private' }) → 403.
  */
 export const GET = withErrorBoundary(async () => {
-  const { friends } = await getFriends();
+  const featuredId = await getViewerSteamId();
+  const { friends } = await getFriends(featuredId);
 
   // In dev: validate the outgoing response shape to catch regressions early.
   // In prod: skip parse overhead; trust the Steam schemas validated upstream.

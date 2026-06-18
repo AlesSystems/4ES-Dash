@@ -10,6 +10,7 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
+import { getViewerSteamId } from '@/server/auth';
 import { dismissIdleFlag } from '@/server/repositories/insights/idle';
 
 const DismissInputSchema = z.object({
@@ -24,7 +25,8 @@ export async function dismissIdleFlagAction(input: {
   toDate: string;
 }): Promise<void> {
   const validated = DismissInputSchema.parse(input);
-  await dismissIdleFlag({
+  const viewerId = await getViewerSteamId();
+  await dismissIdleFlag(viewerId, {
     appId: validated.appId,
     fromDate: new Date(validated.fromDate),
     toDate: new Date(validated.toDate),

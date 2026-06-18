@@ -28,7 +28,7 @@ export default async function ComparePage({
   // Side A defaults to the configured user (forward-compatible with Phase 6 session user).
   // Trim here so the validated value and the value passed downstream (cache key +
   // Steam request) are identical — isValidSteamId trims internally too.
-  const aId = (searchParams.a ?? getEnv().STEAM_ID).trim();
+  const aId = (searchParams.a ?? getEnv().STEAM_ID ?? '').trim();
   const bId = searchParams.b?.trim();
 
   // Validate IDs — show an input prompt instead of crashing.

@@ -10,7 +10,13 @@ import { z } from 'zod';
  */
 const EnvSchema = z.object({
   // 17-digit 64-bit SteamID as a string — JS Number can't hold it precisely.
-  STEAM_ID: z.string().regex(/^\d{17}$/, 'must be a 17-digit SteamID string'),
+  // OPTIONAL since Phase 6 (multi-user): the authenticated session user is "the
+  // user"; STEAM_ID is now only a dev / featured-profile fallback used at call
+  // sites, never inside a repository. When set it must still be a 17-digit string.
+  STEAM_ID: z
+    .string()
+    .regex(/^\d{17}$/, 'must be a 17-digit SteamID string')
+    .optional(),
   STEAM_API_KEY: z.string().min(1, 'is required'),
   // next-auth (Auth.js) — server-only secrets, never NEXT_PUBLIC_. See ADR 0002.
   // NEXTAUTH_SECRET signs/encrypts the JWT session cookie; NEXTAUTH_URL is the

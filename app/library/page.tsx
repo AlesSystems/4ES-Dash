@@ -13,6 +13,7 @@ import { accountAgeYears } from '@/lib/format/account';
 import { getProfile } from '@/server/repositories/profile';
 import { getFirstSeenDates } from '@/server/repositories/snapshots';
 import { getMultiplayerAppIds } from '@/server/repositories/multiplayer';
+import { getViewerSteamId } from '@/server/auth';
 import { EmptyState } from '@/components/states/EmptyState';
 import { StaleBanner } from '@/components/states/StaleBanner';
 import { LibraryHeader } from '@/components/library/LibraryHeader';
@@ -37,19 +38,20 @@ interface LibraryPageProps {
 }
 
 export default async function LibraryPage({ searchParams }: LibraryPageProps) {
+  const featuredId = await getViewerSteamId();
   let profile;
   let games: LibraryGame[];
   let stale = false;
 
   try {
-    const data = await getProfile();
+    const data = await getProfile(featuredId);
     profile = data.profile;
     stale = data.stale;
     // Merge snapshot-inferred acquiredAt (#26) so sort=added lights up for games
     // seen since tracking began. getProfile is cached, so this adds one DB query.
     // Degrade to no dates on a DB hiccup — the library still renders (matches the
     // dashboard; a missing-history read must never crash the page).
-    const firstSeen = await getFirstSeenDates().catch(() => new Map<number, string>());
+    const firstSeen = await getFirstSeenDates(featuredId).catch(() => new Map<number, string>());
     games = data.games.map((g) => ({ ...g, acquiredAt: firstSeen.get(g.appId) ?? null }));
   } catch (error) {
     if (isSteamApiError(error) && error.kind === 'private') {
@@ -80,7 +82,7 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
     // On a total repo failure, treat every game as uncategorized so the
     // "Some games could not be categorized" note surfaces instead of a silent
     // empty grid (degrade, never hide — see CLAUDE.md degradation contract).
-    const mp = await getMultiplayerAppIds().catch(() => ({
+    const mp = await getMultiplayerAppIds(featuredId).catch(() => ({
       multiplayerAppIds: new Set<number>(),
       missingCount: games.length,
       stale: false,

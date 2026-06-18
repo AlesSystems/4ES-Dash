@@ -129,7 +129,7 @@ describe('getMultiplayerAppIds – mixed library', () => {
   });
 
   it('multiplayerAppIds contains A and C but not B', async () => {
-    const result = await getMultiplayerAppIds();
+    const result = await getMultiplayerAppIds('76561198000000001');
 
     expect(result.multiplayerAppIds.has(APP_A)).toBe(true);
     expect(result.multiplayerAppIds.has(APP_C)).toBe(true);
@@ -138,12 +138,12 @@ describe('getMultiplayerAppIds – mixed library', () => {
   });
 
   it('missingCount is 0 when all metadata is available', async () => {
-    const result = await getMultiplayerAppIds();
+    const result = await getMultiplayerAppIds('76561198000000001');
     expect(result.missingCount).toBe(0);
   });
 
   it('stale is false when no result is stale', async () => {
-    const result = await getMultiplayerAppIds();
+    const result = await getMultiplayerAppIds('76561198000000001');
     expect(result.stale).toBe(false);
   });
 });
@@ -175,23 +175,23 @@ describe('getMultiplayerAppIds – metadata unavailable for one game', () => {
   });
 
   it('unavailable game is NOT in the multiplayer set', async () => {
-    const result = await getMultiplayerAppIds();
+    const result = await getMultiplayerAppIds('76561198000000001');
     expect(result.multiplayerAppIds.has(APP_MISSING)).toBe(false);
   });
 
   it('missingCount is 1', async () => {
-    const result = await getMultiplayerAppIds();
+    const result = await getMultiplayerAppIds('76561198000000001');
     expect(result.missingCount).toBe(1);
   });
 
   it('available multiplayer game IS in the set', async () => {
-    const result = await getMultiplayerAppIds();
+    const result = await getMultiplayerAppIds('76561198000000001');
     expect(result.multiplayerAppIds.has(APP_GOOD)).toBe(true);
     expect(result.multiplayerAppIds.size).toBe(1);
   });
 
   it('resolves without throwing', async () => {
-    await expect(getMultiplayerAppIds()).resolves.toBeDefined();
+    await expect(getMultiplayerAppIds('76561198000000001')).resolves.toBeDefined();
   });
 });
 
@@ -221,13 +221,13 @@ describe('getMultiplayerAppIds – non-200 Store response for one game', () => {
   });
 
   it('HTTP-error game is excluded from multiplayer set and counted as missing', async () => {
-    const result = await getMultiplayerAppIds();
+    const result = await getMultiplayerAppIds('76561198000000001');
     expect(result.multiplayerAppIds.has(APP_ERROR)).toBe(false);
     expect(result.missingCount).toBe(1);
   });
 
   it('the successful multiplayer game (id=27) is in the set', async () => {
-    const result = await getMultiplayerAppIds();
+    const result = await getMultiplayerAppIds('76561198000000001');
     expect(result.multiplayerAppIds.has(APP_OK)).toBe(true);
   });
 });
@@ -245,7 +245,7 @@ describe('getMultiplayerAppIds – empty library', () => {
   });
 
   it('returns an empty set with missingCount 0', async () => {
-    const result = await getMultiplayerAppIds();
+    const result = await getMultiplayerAppIds('76561198000000001');
     expect(result.multiplayerAppIds.size).toBe(0);
     expect(result.missingCount).toBe(0);
     expect(result.stale).toBe(false);
@@ -271,7 +271,7 @@ describe('getMultiplayerAppIds – no-multiplayer library', () => {
   });
 
   it('returns an empty set when no game has a multiplayer category', async () => {
-    const result = await getMultiplayerAppIds();
+    const result = await getMultiplayerAppIds('76561198000000001');
     expect(result.multiplayerAppIds.size).toBe(0);
     expect(result.missingCount).toBe(0);
   });

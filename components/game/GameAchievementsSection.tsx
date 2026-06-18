@@ -11,6 +11,7 @@
 
 import { getGameAchievements } from '@/server/repositories/achievements';
 import { AchievementList } from '@/components/game/AchievementList';
+import { getViewerSteamId } from '@/server/auth';
 
 export interface GameAchievementsSectionProps {
   appId: number;
@@ -19,6 +20,7 @@ export interface GameAchievementsSectionProps {
 export async function GameAchievementsSection({
   appId,
 }: GameAchievementsSectionProps): Promise<JSX.Element> {
-  const result = await getGameAchievements(appId);
+  const viewerId = await getViewerSteamId();
+  const result = await getGameAchievements(viewerId, appId);
   return <AchievementList result={result} />;
 }

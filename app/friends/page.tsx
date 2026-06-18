@@ -1,5 +1,6 @@
 import { isSteamApiError } from '@/lib/steam/errors';
 import { getFriends } from '@/server/repositories/friends';
+import { getViewerSteamId } from '@/server/auth';
 import { EmptyState } from '@/components/states/EmptyState';
 import { StaleBanner } from '@/components/states/StaleBanner';
 import { NowPlayingFriends } from '@/components/friends/NowPlayingFriends';
@@ -21,7 +22,8 @@ export default async function FriendsPage(): Promise<JSX.Element> {
   let stale = false;
 
   try {
-    const data = await getFriends();
+    const featuredId = await getViewerSteamId();
+    const data = await getFriends(featuredId);
     friends = data.friends;
     stale = data.stale;
   } catch (error) {

@@ -22,6 +22,7 @@ import type { Metadata } from 'next';
 import { isSteamApiError } from '@/lib/steam/errors';
 import { getProfile } from '@/server/repositories/profile';
 import { getGameStoreMetadata } from '@/server/repositories/store';
+import { getViewerSteamId } from '@/server/auth';
 
 import { GameHero } from '@/components/game/GameHero';
 import { GameAchievementsSection } from '@/components/game/GameAchievementsSection';
@@ -80,7 +81,8 @@ export default async function GameDetailPage({
 
   // Gating fetch: profile determines hero content (name, header image, playtime).
   // Achievements and store info are fetched by their own async subcomponents.
-  const profileResult = await getProfile().catch((err: unknown) => {
+  const featuredId = await getViewerSteamId();
+  const profileResult = await getProfile(featuredId).catch((err: unknown) => {
     if (isSteamApiError(err) && err.kind === 'private') {
       return null;
     }

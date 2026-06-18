@@ -1,6 +1,7 @@
 import { withErrorBoundary } from '@/server/api';
 import { getProfile } from '@/server/repositories/profile';
 import { ProfileResponse } from '@/lib/zod/api/profile';
+import { getViewerSteamId } from '@/server/auth';
 
 /**
  * Opt out of static prerendering — this route reads env vars and live data
@@ -16,7 +17,8 @@ export const dynamic = 'force-dynamic';
  * ZodError → 400, unhandled → 500. No try/catch inside this handler.
  */
 export const GET = withErrorBoundary(async () => {
-  const data = await getProfile();
+  const featuredId = await getViewerSteamId();
+  const data = await getProfile(featuredId);
 
   // In dev: validate the outgoing response shape to catch regressions early.
   // In prod: skip parse overhead; trust the Steam schemas validated upstream.

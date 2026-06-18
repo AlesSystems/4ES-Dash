@@ -10,6 +10,7 @@
 
 import { getProfile } from '@/server/repositories/profile';
 import { getGameStoreMetadata } from '@/server/repositories/store';
+import { requireSteamId } from '@/server/repositories/require-steam-id';
 import { isAvailable } from '@/lib/result';
 import { isMultiplayerGame } from '@/lib/games/multiplayer';
 
@@ -26,8 +27,7 @@ export interface MultiplayerLibrary {
 }
 
 /**
- * Returns the set of multiplayer-eligible appIds for the configured user's
- * library.
+ * Returns the set of multiplayer-eligible appIds for the given user's library.
  *
  * Classification rules:
  * - available(StoreMetadata) with multiplayer categoryId → added to the set.
@@ -36,9 +36,13 @@ export interface MultiplayerLibrary {
  *
  * Promise.all is used so the Store client's global rate-limiter serialises
  * naturally; no additional throttle is introduced here.
+ *
+ * @param steamId - Required. Pass getEnv().STEAM_ID at the call site for the
+ *   featured/dev default — never read env.STEAM_ID inside this repository.
  */
-export async function getMultiplayerAppIds(): Promise<MultiplayerLibrary> {
-  const { games } = await getProfile();
+export async function getMultiplayerAppIds(steamId: string): Promise<MultiplayerLibrary> {
+  const id = requireSteamId(steamId, 'getMultiplayerAppIds');
+  const { games } = await getProfile(id);
 
   const metadataResults = await Promise.all(games.map((g) => getGameStoreMetadata(g.appId)));
 

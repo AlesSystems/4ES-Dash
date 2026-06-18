@@ -43,8 +43,8 @@
       "title": "session-scoped data layer (retire env.STEAM_ID)",
       "issue": 62,
       "file": "03-tasks/04-session-scoped-data-layer.md",
-      "status": "todo",
-      "owner": null,
+      "status": "in-review",
+      "owner": "implementer-sonnet",
       "tests": ["tests/unit/repositories-isolation.test.ts"],
       "verdict": null,
       "notes": "Tier 2. Depends on 02+03. Riskiest refactor: ~12 files read env.STEAM_ID; two-SteamID isolation test required."
@@ -54,9 +54,9 @@
       "title": "route protection + data isolation (authz)",
       "issue": 63,
       "file": "03-tasks/05-route-protection-authz.md",
-      "status": "todo",
-      "owner": null,
-      "tests": ["tests/unit/authz.test.ts"],
+      "status": "in-review",
+      "owner": "implementer-sonnet",
+      "tests": ["tests/unit/authz.test.ts", "tests/unit/route-protection.test.ts", "tests/unit/idor.test.ts"],
       "verdict": null,
       "notes": "Tier 2. Depends on 02+04. IDOR test (user A cannot read user B) required."
     },

@@ -30,7 +30,7 @@ beforeEach(() => {
 
 describe('getGenreBreakdown', () => {
   it('returns empty breakdown for no games', async () => {
-    const result = await getGenreBreakdown();
+    const result = await getGenreBreakdown('76561198000000000');
     expect(result.genres.slices).toHaveLength(0);
     expect(result.genres.totalMinutes).toBe(0);
     expect(result.tags).toBeNull();
@@ -41,7 +41,7 @@ describe('getGenreBreakdown', () => {
   it('folds unavailable metadata into Unknown and increments unknownFromUnavailable', async () => {
     mockPrisma.ownedGame.findMany.mockResolvedValue([{ appId: 730, playtimeForever: 600 }]);
     mockGetMetadata.mockResolvedValue({ available: false, reason: 'metadata-unavailable' });
-    const result = await getGenreBreakdown();
+    const result = await getGenreBreakdown('76561198000000000');
     expect(result.unknownFromUnavailable).toBe(1);
     const unknownSlice = result.genres.slices.find((s) => s.label === 'Unknown');
     expect(unknownSlice?.minutes).toBe(600);
@@ -85,7 +85,7 @@ describe('getGenreBreakdown', () => {
         },
         stale: false,
       });
-    const result = await getGenreBreakdown();
+    const result = await getGenreBreakdown('76561198000000000');
     const action = result.genres.slices.find((s) => s.label === 'Action');
     expect(action?.minutes).toBe(400); // 300 + 100
     const fps = result.genres.slices.find((s) => s.label === 'FPS');

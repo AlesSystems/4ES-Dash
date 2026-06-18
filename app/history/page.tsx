@@ -10,6 +10,7 @@
  */
 
 import { getPlaytimeSnapshots } from '@/server/repositories/snapshots';
+import { getViewerSteamId } from '@/server/auth';
 import { aggregatePlaytime, type Bucket } from '@/lib/history/aggregate';
 import { HistoryToggle } from '@/components/history/HistoryToggle';
 import { PlaytimeChart } from '@/components/history/PlaytimeChart';
@@ -38,7 +39,8 @@ function parseBucket(raw: string | undefined): Bucket {
 export default async function HistoryPage({ searchParams }: HistoryPageProps) {
   const bucket = parseBucket(searchParams.bucket);
 
-  const rows = await getPlaytimeSnapshots();
+  const featuredId = await getViewerSteamId();
+  const rows = await getPlaytimeSnapshots(featuredId);
   const points = aggregatePlaytime(rows, bucket);
 
   return (

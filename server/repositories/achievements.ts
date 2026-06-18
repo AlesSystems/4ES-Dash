@@ -10,7 +10,8 @@
  *                           →  aggregateLibrary
  *
  * All three Steam calls are individually cached under `server/cache/ttl.ts`
- * TTL.playerAchievements (3600 s). The STEAM_ID is read lazily from getEnv().
+ * TTL.playerAchievements (3600 s). The steamId is passed explicitly — never
+ * read from getEnv() inside this repository.
  */
 
 import {
@@ -22,7 +23,7 @@ import { mergeGameAchievements, aggregateLibrary } from '@/lib/achievements/aggr
 import type { GameAchievements, LibrarySummary } from '@/lib/achievements/aggregate';
 import { Availability, available, unavailable } from '@/lib/result';
 import { cache, cacheKey, TTL } from '@/server/cache';
-import { getEnv } from '@/server/env';
+import { requireSteamId } from '@/server/repositories/require-steam-id';
 
 // Re-export domain types so consumers don't need to import from two places.
 export type { GameAchievements, LibrarySummary };
@@ -36,12 +37,15 @@ export type { GameAchievements, LibrarySummary };
  *
  * - Schema and global-percentage data are cached under the 'global' pseudo-steamId
  *   (they are per-game, not per-user).
- * - Player achievement data is cached per STEAM_ID.
+ * - Player achievement data is cached per steamId.
  * - If the player result is unavailable (private profile or no achievements),
  *   that Availability is passed through unchanged.
+ *
+ * @param steamId - Required. Pass getEnv().STEAM_ID at the call site for the
+ *   featured/dev default — never read env.STEAM_ID inside this repository.
  */
-export async function getGameAchievements(appId: number): Promise<Availability<GameAchievements>> {
-  const { STEAM_ID } = getEnv();
+export async function getGameAchievements(steamId: string, appId: number): Promise<Availability<GameAchievements>> {
+  const id = requireSteamId(steamId, 'getGameAchievements');
 
   // Fetch the per-user progress FIRST. When a game is private or has no
   // achievements, there is no point spending two more rate-limited calls on its
@@ -49,9 +53,9 @@ export async function getGameAchievements(appId: number): Promise<Availability<G
   // dashboard's cold-load cost from 3 Steam calls/game to 1 for every
   // unavailable game (a private library is ~38 s → ~13 s). See ERR-0003.
   const playerResult = await cache(
-    cacheKey('player-achievements', STEAM_ID, appId),
+    cacheKey('player-achievements', id, appId),
     TTL.playerAchievements,
-    () => getPlayerAchievements(STEAM_ID, appId),
+    () => getPlayerAchievements(id, appId),
   );
 
   const playerAvailability = playerResult.value;
@@ -96,11 +100,15 @@ export async function getGameAchievements(appId: number): Promise<Availability<G
  *
  * Returns `unavailable('no-achievements')` when none of the requested games
  * have available achievement data.
+ *
+ * @param steamId - Required. Pass getEnv().STEAM_ID at the call site for the
+ *   featured/dev default — never read env.STEAM_ID inside this repository.
  */
 export async function getAchievementProgress(
+  steamId: string,
   appIds: number[],
 ): Promise<Availability<LibrarySummary>> {
-  const results = await Promise.all(appIds.map((id) => getGameAchievements(id)));
+  const results = await Promise.all(appIds.map((id) => getGameAchievements(steamId, id)));
 
   const availableResults = results.filter(
     (r): r is Extract<typeof r, { available: true }> => r.available,

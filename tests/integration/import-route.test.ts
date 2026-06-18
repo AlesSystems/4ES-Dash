@@ -1,7 +1,15 @@
 /**
  * Integration tests for POST /api/import.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+// Import is a state-changing write scoped to the authenticated session user.
+// Mock getSessionUser so tests control who (if anyone) is signed in.
+let mockSession: { steamId: string } | null = { steamId: '76561198000000000' };
+vi.mock('@/server/auth', () => ({
+  getSessionUser: () => Promise.resolve(mockSession),
+}));
+
 import { POST } from '@/app/api/import/route';
 import { prisma } from '@/server/db';
 
@@ -37,6 +45,27 @@ function postCsv(text: string): Promise<Response> {
 
 beforeEach(async () => {
   await resetDb();
+  // Default: an authenticated user. The auth test overrides this to null.
+  mockSession = { steamId: '76561198000000000' };
+});
+
+describe('POST /api/import — auth (session scoping)', () => {
+  it('returns 401 and writes nothing when no session (anonymous POST cannot mutate any account)', async () => {
+    mockSession = null;
+    const res = await postJson({ rows: [{ appId: 730, pricePaidCents: 2499, currency: 'USD' }] });
+    expect(res.status).toBe(401);
+    const count = await prisma.manualGameData.count();
+    expect(count).toBe(0);
+  });
+
+  it('scopes the import to the SESSION user, not a global/featured owner', async () => {
+    mockSession = { steamId: '76561198000000099' };
+    const res = await postJson({ rows: [{ appId: 730, pricePaidCents: 2499, currency: 'USD' }] });
+    expect(res.status).toBe(200);
+    const rows = await prisma.manualGameData.findMany({ where: { appId: 730 } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.steamId).toBe('76561198000000099');
+  });
 });
 
 describe('POST /api/import — validation', () => {

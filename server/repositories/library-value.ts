@@ -8,6 +8,7 @@
 
 import { getProfile } from '@/server/repositories/profile';
 import { getGameStorePrice } from '@/server/repositories/store';
+import { requireSteamId } from '@/server/repositories/require-steam-id';
 import { isAvailable } from '@/lib/result';
 
 export interface LibraryValue {
@@ -26,7 +27,7 @@ export interface LibraryValue {
 }
 
 /**
- * Returns the aggregated current store value of the configured user's library.
+ * Returns the aggregated current store value of the given user's library.
  *
  * Accounting rules:
  * - available(StorePrice)    → priced: adds finalCents, increments pricedCount.
@@ -35,9 +36,13 @@ export interface LibraryValue {
  *
  * Promise.all is used so the Store client's global rate-limiter serialises
  * naturally; no additional throttle is introduced here.
+ *
+ * @param steamId - Required. Pass getEnv().STEAM_ID at the call site for the
+ *   featured/dev default — never read env.STEAM_ID inside this repository.
  */
-export async function getLibraryValue(): Promise<LibraryValue> {
-  const { games } = await getProfile();
+export async function getLibraryValue(steamId: string): Promise<LibraryValue> {
+  const id = requireSteamId(steamId, 'getLibraryValue');
+  const { games } = await getProfile(id);
 
   const prices = await Promise.all(games.map((g) => getGameStorePrice(g.appId)));
 

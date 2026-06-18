@@ -1,5 +1,6 @@
 import { getProfile } from '@/server/repositories/profile';
 import { SidebarNav } from './SidebarNav';
+import { getViewerSteamId } from '@/server/auth';
 
 /**
  * Persistent left sidebar (desktop only) for the warm "Wrapped" shell.
@@ -14,7 +15,8 @@ export async function Sidebar(): Promise<JSX.Element> {
   let untouchedCount: number | null = null;
 
   try {
-    const { games } = await getProfile();
+    const viewerId = await getViewerSteamId();
+    const { games } = await getProfile(viewerId);
     libraryCount = games.length;
     untouchedCount = games.filter((game) => game.playtime.total === 0).length;
   } catch {
