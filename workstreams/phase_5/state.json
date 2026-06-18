@@ -1,0 +1,67 @@
+{
+  "feature": "phase_5",
+  "brief": "00-brief.md",
+  "updated": "2026-06-18",
+  "prs": [
+    { "id": "PR1", "title": "Skeletons + error boundaries", "issues": [41, 42], "tasks": ["01", "02", "03"], "branch": "feat/phase-5-skeletons-errors" },
+    { "id": "PR2", "title": "Lighthouse / SEO / a11y / perf", "issues": [43], "tasks": ["04"], "branch": "perf/phase-5-lighthouse" },
+    { "id": "PR3", "title": "Documentation pass", "issues": [46], "tasks": ["05"], "branch": "docs/phase-5-documentation" }
+  ],
+  "tasks": [
+    {
+      "id": "01",
+      "title": "Shared UI primitives (Skeleton, RouteError, RetryBoundary)",
+      "file": "03-tasks/01-shared-primitives.md",
+      "status": "todo",
+      "owner": null,
+      "pr": "PR1",
+      "tests": [],
+      "verdict": null,
+      "notes": "Tier-1 contract; runs first. Imported by 02/03/04."
+    },
+    {
+      "id": "02",
+      "title": "Route & global error boundaries with retry",
+      "file": "03-tasks/02-error-boundaries.md",
+      "status": "todo",
+      "owner": null,
+      "pr": "PR1",
+      "tests": [],
+      "verdict": null,
+      "notes": "Depends on 01 (RouteError)."
+    },
+    {
+      "id": "03",
+      "title": "Section-level Suspense skeletons + CLS test",
+      "file": "03-tasks/03-section-suspense.md",
+      "status": "todo",
+      "owner": null,
+      "pr": "PR1",
+      "tests": [],
+      "verdict": null,
+      "notes": "Depends on 01 (Skeleton). Runs after 02 (shared tree, tsc-gate)."
+    },
+    {
+      "id": "04",
+      "title": "Lighthouse >= 90: SEO, a11y, perf",
+      "file": "03-tasks/04-lighthouse-seo-a11y-perf.md",
+      "status": "todo",
+      "owner": null,
+      "pr": "PR2",
+      "tests": [],
+      "verdict": null,
+      "notes": "After PR1 merged (edits page.tsx metadata). Live score = maintainer step."
+    },
+    {
+      "id": "05",
+      "title": "Documentation pass",
+      "file": "03-tasks/05-documentation-pass.md",
+      "status": "todo",
+      "owner": null,
+      "pr": "PR3",
+      "tests": [],
+      "verdict": null,
+      "notes": "Docs/scripts only; runs in parallel in isolated worktree."
+    }
+  ]
+}
