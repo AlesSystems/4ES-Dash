@@ -58,6 +58,15 @@ Rate limit notes for the Store API:
 > Cache keys stay `steam:<endpoint>:<steamId>[:<appid>]`, so two SteamIDs are
 > cache-isolated (proven by `tests/unit/repositories-isolation.test.ts`).
 
+> **Onboarding gate (Phase 7, #90).** A signed-in user is not "ready" until
+> `runOnboardingBackfill` has run and set `User.onboardedAt`. Protected "my"
+> views must distinguish *not provisioned yet* from *genuinely empty* before
+> rendering an empty state. `server/onboarding-gate.ts#getOnboardingStatus()`
+> returns `'no-session' | 'not-onboarded' | 'onboarded'` from a single
+> `User.onboardedAt` read — it does **not** trigger a backfill (no Steam fan-out
+> on the render path). Pages redirect a `'not-onboarded'` viewer to
+> `/onboarding`; reserve empty states for `'onboarded'` viewers with no rows.
+
 The following endpoints are Zod-parsed, rate-limited, and cached via `server/repositories/*`:
 
 | Function (`lib/steam`)              | Steam endpoint                              | Repository                          | TTL (`ttl.ts`)        |
