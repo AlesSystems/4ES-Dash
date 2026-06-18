@@ -45,8 +45,15 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Test
-        run: pnpm test
+      # Runs the suite and enforces the coverage floor (thresholds in
+      # vitest.config.mts). Fails CI if coverage drops below the ratchet.
+      - name: Test (with coverage floor)
+        run: pnpm test:coverage
 
       - name: Build
         run: pnpm build
+
+      # Gate per-route JS payload against the < 200 KB gzipped budget
+      # (CLAUDE.md). Reads the build manifest produced by the step above.
+      - name: Bundle-size budget
+        run: pnpm check:bundle
