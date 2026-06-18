@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter, JetBrains_Mono, Source_Serif_4 } from 'next/font/google';
 import Script from 'next/script';
 import './globals.css';
@@ -27,8 +27,22 @@ const sourceSerif = Source_Serif_4({
 });
 
 export const metadata: Metadata = {
-  title: '4ES-Dash',
-  description: 'A calm, information-dense personal Steam dashboard.',
+  metadataBase: new URL('https://4es-dash.vercel.app'),
+  title: {
+    default: '4ES Dash',
+    template: '%s — 4ES Dash',
+  },
+  description:
+    'A calm, information-dense personal Steam dashboard. Track playtime, achievements, library value, and more.',
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    // Next.js requires static literals here (CSS vars unsupported in metadata).
+    // These mirror the --bg tokens in app/globals.css.
+    { media: '(prefers-color-scheme: light)', color: '#f4ede1' },
+    { media: '(prefers-color-scheme: dark)', color: '#141211' },
+  ],
 };
 
 // Runs before first paint (injected into <head> via next/script beforeInteractive):

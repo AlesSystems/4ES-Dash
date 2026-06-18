@@ -13,6 +13,12 @@ import { getPlaytimeSnapshots } from '@/server/repositories/snapshots';
 import { aggregatePlaytime, type Bucket } from '@/lib/history/aggregate';
 import { HistoryToggle } from '@/components/history/HistoryToggle';
 import { PlaytimeChart } from '@/components/history/PlaytimeChart';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Playtime History',
+  description: 'View your Steam playtime trends over time, bucketed by week or month.',
+};
 
 // Never prerender — data comes from the live DB per request.
 export const dynamic = 'force-dynamic';

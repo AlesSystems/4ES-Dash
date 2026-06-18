@@ -11,6 +11,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import type { Metadata } from 'next';
 
 import {
   getAvailableReviewYears,
@@ -19,6 +20,12 @@ import {
 import { EmptyState } from '@/components/states/EmptyState';
 import { ReviewCover } from '@/components/review/ReviewCover';
 import { TopGamesSection } from '@/components/review/TopGamesSection';
+
+export const metadata: Metadata = {
+  title: 'Year in Review',
+  description:
+    'Your personal Steam Year in Review — top games, total playtime, and achievements unlocked.',
+};
 
 export const dynamic = 'force-dynamic';
 

@@ -20,6 +20,13 @@ import { getLevel } from '@/server/repositories/level';
 import { getRecentlyPlayed } from '@/server/repositories/recently-played';
 import { getAchievementProgress } from '@/server/repositories/achievements';
 import { getFirstSeenDates } from '@/server/repositories/snapshots';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Dashboard',
+  description:
+    'Your personal Steam dashboard — playtime, achievements, library value, and recently played games at a glance.',
+};
 
 // The dashboard reads env + live Steam data per request — never prerender it at build.
 export const dynamic = 'force-dynamic';
