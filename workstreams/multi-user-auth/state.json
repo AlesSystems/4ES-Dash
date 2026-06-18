@@ -1,0 +1,108 @@
+{
+  "feature": "multi-user-auth",
+  "brief": "00-brief.md",
+  "milestone": "Phase 6 — Multi-user & Auth",
+  "issues": [59, 60, 61, 62, 63, 64, 65, 66, 67],
+  "updated": "2026-06-18",
+  "tasks": [
+    {
+      "id": "01",
+      "title": "ADR: multi-tenancy + Steam OpenID auth",
+      "issue": 59,
+      "file": "03-tasks/01-adr-multi-tenant-auth.md",
+      "status": "todo",
+      "owner": null,
+      "tests": [],
+      "verdict": null,
+      "notes": "Tier 0. Source of truth; locks session strategy + privacy default for tasks 02/03. Docs-only."
+    },
+    {
+      "id": "02",
+      "title": "next-auth + Steam OpenID provider",
+      "issue": 60,
+      "file": "03-tasks/02-nextauth-steam-openid.md",
+      "status": "todo",
+      "owner": null,
+      "tests": ["tests/unit/auth.test.ts"],
+      "verdict": null,
+      "notes": "Tier 1. Depends on 01 (session strategy). Establishes session.user.steamId; blocks 04/05/06/07."
+    },
+    {
+      "id": "03",
+      "title": "Prisma — next-auth tables + per-user identity",
+      "issue": 61,
+      "file": "03-tasks/03-prisma-auth-identity.md",
+      "status": "todo",
+      "owner": null,
+      "tests": [],
+      "verdict": null,
+      "notes": "Tier 1. Depends on 01. One new migration; coordinate with #24 so migrations don't collide."
+    },
+    {
+      "id": "04",
+      "title": "session-scoped data layer (retire env.STEAM_ID)",
+      "issue": 62,
+      "file": "03-tasks/04-session-scoped-data-layer.md",
+      "status": "todo",
+      "owner": null,
+      "tests": ["tests/unit/repositories-isolation.test.ts"],
+      "verdict": null,
+      "notes": "Tier 2. Depends on 02+03. Riskiest refactor: ~12 files read env.STEAM_ID; two-SteamID isolation test required."
+    },
+    {
+      "id": "05",
+      "title": "route protection + data isolation (authz)",
+      "issue": 63,
+      "file": "03-tasks/05-route-protection-authz.md",
+      "status": "todo",
+      "owner": null,
+      "tests": ["tests/unit/authz.test.ts"],
+      "verdict": null,
+      "notes": "Tier 2. Depends on 02+04. IDOR test (user A cannot read user B) required."
+    },
+    {
+      "id": "06",
+      "title": "first-login onboarding backfill",
+      "issue": 64,
+      "file": "03-tasks/06-onboarding-backfill.md",
+      "status": "todo",
+      "owner": null,
+      "tests": ["tests/unit/onboarding-backfill.test.ts"],
+      "verdict": null,
+      "notes": "Tier 3. Depends on 02+03+04. Must be idempotent + rate-limited; private profile -> locked state."
+    },
+    {
+      "id": "07",
+      "title": "auth UI — sign in/out + user menu + landing",
+      "issue": 65,
+      "file": "03-tasks/07-auth-ui.md",
+      "status": "todo",
+      "owner": null,
+      "tests": ["tests/unit/UserMenu.test.tsx"],
+      "verdict": null,
+      "notes": "Tier 3. Depends on 02. App bar is a merge point — serialize shell edits."
+    },
+    {
+      "id": "08",
+      "title": "privacy controls + account settings",
+      "issue": 66,
+      "file": "03-tasks/08-privacy-account-settings.md",
+      "status": "todo",
+      "owner": null,
+      "tests": ["tests/unit/account-settings.test.ts"],
+      "verdict": null,
+      "notes": "Tier 4. Depends on 03+05+06+07. Friends-only fails closed; delete removes all rows."
+    },
+    {
+      "id": "09",
+      "title": "multi-user security + docs pass",
+      "issue": 67,
+      "file": "03-tasks/09-docs-multi-user-pass.md",
+      "status": "todo",
+      "owner": null,
+      "tests": [],
+      "verdict": null,
+      "notes": "Tier 5. Depends on 01-08. Docs-only: SECURITY, ROADMAP, ARCHITECTURE, README, ACCEPTANCE."
+    }
+  ]
+}
