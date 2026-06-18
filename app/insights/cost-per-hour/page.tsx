@@ -9,6 +9,13 @@ import { getCostPerHour } from '@/server/repositories/insights/cost-per-hour';
 import { EmptyState } from '@/components/states/EmptyState';
 import { StaleBanner } from '@/components/states/StaleBanner';
 import { formatHours } from '@/lib/format/playtime';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Cost Per Hour',
+  description:
+    'Rank your Steam games by cost per hour of playtime to find your best and worst value purchases.',
+};
 
 export const dynamic = 'force-dynamic';
 

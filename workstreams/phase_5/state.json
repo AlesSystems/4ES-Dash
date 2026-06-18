@@ -54,23 +54,25 @@
       "id": "04",
       "title": "Lighthouse >= 90: SEO, a11y, perf",
       "file": "03-tasks/04-lighthouse-seo-a11y-perf.md",
-      "status": "todo",
-      "owner": null,
+      "status": "approved",
+      "owner": "human",
       "pr": "PR2",
-      "tests": [],
-      "verdict": null,
-      "notes": "After PR1 merged (edits page.tsx metadata). Live score = maintainer step."
+      "tests": [
+        "tests/unit/app/seo-metadata.test.ts"
+      ],
+      "verdict": "approve",
+      "notes": "PR #77 (base PR1). Reviewer rejected wrong/hardcoded themeColor + role=list removal (Safari/VoiceOver regression); both fixed, re-approved. Live Lighthouse >=90 = maintainer step recorded on the PR."
     },
     {
       "id": "05",
       "title": "Documentation pass",
       "file": "03-tasks/05-documentation-pass.md",
-      "status": "todo",
-      "owner": null,
+      "status": "approved",
+      "owner": "human",
       "pr": "PR3",
       "tests": [],
-      "verdict": null,
-      "notes": "Docs/scripts only; runs in parallel in isolated worktree."
+      "verdict": "approve",
+      "notes": "PR #76. Reviewer + orchestrator found docs described non-existent infra; #44 (Docker) was closed-as-completed but never landed -> reopened. Documented local-only, deferred Docker, stripped fabricated /api/health, SENTRY_DSN, BACKUP_S3_BUCKET. Screenshots are placeholders pending maintainer capture."
     }
   ]
 }

@@ -5,6 +5,13 @@ import { EmptyState } from '@/components/states/EmptyState';
 import { StaleBanner } from '@/components/states/StaleBanner';
 import { CompareHeader } from '@/components/compare/CompareHeader';
 import { SharedGamesTable } from '@/components/compare/SharedGamesTable';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Compare Libraries',
+  description:
+    'Compare two Steam libraries side-by-side to find shared games and playtime differences.',
+};
 
 // Reads live Steam data per request — never prerender at build time.
 export const dynamic = 'force-dynamic';
