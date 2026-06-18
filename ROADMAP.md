@@ -4,7 +4,7 @@ A personal stats dashboard for Steam. This roadmap is a guide, not a contract �
 
 ## Vision
 
-A fast, beautiful single-user dashboard that surfaces meaningful insights from a Steam library: playtime trends, achievement progress, friends activity, library value, and unplayed-game accountability. Self-hostable, open-source, no telemetry.
+A fast, beautiful dashboard that surfaces meaningful insights from a Steam library: playtime trends, achievement progress, friends activity, library value, and unplayed-game accountability. Any Steam account holder can sign in and see their own dashboard. Self-hostable, open-source, no telemetry.
 
 ## Status legend
 
@@ -76,22 +76,34 @@ Goal: derived analytics that feel like a personal Wrapped.
 
 ## Phase 5 — Polish & ship (Week 10)
 
-- [ ] Loading skeletons everywhere
-- [ ] Error boundaries with retry
-- [ ] Lighthouse > 90 on all categories
+- [x] Loading skeletons everywhere
+- [x] Error boundaries with retry
+- [x] Lighthouse > 90 on all categories
 - [ ] Docker image + docker-compose
-- [ ] Documentation pass: README, setup, screenshots (local + Docker paths)
+- [x] Documentation pass: README, setup, screenshots (local + Docker paths)
+
+## Phase 6 — Multi-user & Auth (shipped)
+
+Goal: any Steam account holder can sign in with Steam OpenID, own their data, and control who sees their profile.
+
+- [x] ADR: multi-tenancy + Steam OpenID auth strategy ([ADR 0002](docs/adr/0002-multi-tenant-steam-openid-auth.md))
+- [x] next-auth + Steam OpenID provider (`NEXTAUTH_SECRET`, `NEXTAUTH_URL`; JWT sessions, no DB session table)
+- [x] Prisma: `User` table extended with `lastLoginAt`, `privacy @default(private)`, `onboardedAt`
+- [x] Session-scoped data layer: `env.STEAM_ID` demoted to optional dev/featured-profile fallback; repositories take explicit `steamId` param
+- [x] Route protection + data isolation: middleware guards private routes; `canViewProfile()` fails closed for friends-only
+- [x] First-login onboarding backfill: seeds profile + owned games + baseline snapshot on first sign-in; idempotent
+- [x] Auth UI: "Sign in with Steam" entry point, signed-in user menu, logged-out landing
+- [x] Privacy controls + account settings: `public` / `friends-only` / `private`; re-sync; atomic account & data deletion
 
 ## Phase 7 — Deployment & hosting
 
 Goal: a frictionless managed-hosting path on top of the self-host (Docker) story shipped in Phase 5.
 
-- [ ] One-click Vercel deploy button (pre-fills `STEAM_API_KEY`, `STEAM_ID`, `DATABASE_URL`, `CRON_SECRET`)
+- [ ] One-click Vercel deploy button (pre-fills `STEAM_API_KEY`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `DATABASE_URL`, `CRON_SECRET`)
 - [ ] `docs/DEPLOYMENT.md` Vercel section (env vars, cron, managed Postgres)
 
 ## Stretch goals (post-1.0)
 
-- [ ] Multi-user support with OpenID login (Steam)
 - [ ] Wishlist tracker with price-drop alerts
   - Wishlist data: `store.steampowered.com/wishlist/profiles/<steamid>/wishlistdata/` (undocumented Store API, public wishlists only)
   - Price alerts: polled nightly via `store.steampowered.com/api/appdetails?filters=price_overview`
@@ -111,9 +123,8 @@ Goal: a frictionless managed-hosting path on top of the self-host (Docker) story
 
 ## Open questions
 
-- Postgres vs. SQLite for the v1 default? (Leaning SQLite for self-host simplicity.)
-- Charting library: Recharts, Visx, or Tremor? (Leaning Tremor for speed.)
-- Auth for the multi-user phase: Steam OpenID directly, or NextAuth?
+- Postgres vs. SQLite for the v1 default? (SQLite for self-host simplicity; Postgres for prod — see `docs/DEPLOYMENT.md`.)
+- DB snapshot pruning strategy for operators running many users on a free-tier DB (ADR 0002 §7).
 
 ## Data sources
 

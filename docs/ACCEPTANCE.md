@@ -274,10 +274,10 @@ These gates apply to every PR regardless of phase. A task is not done until all 
   - A test asserts the session→`steamId` mapping with Steam mocked (MSW, `onUnhandledRequest: 'error'`).
 
 - [ ] **Prisma: auth tables + per-user identity** *(#61)*
-  - next-auth persistence tables (`Account`, `Session`, `VerificationToken`) exist, or a documented JWT decision omits the session table — matching the ADR (#59).
-  - The `User` table is keyed by `steamId: String` and carries `createdAt`, `lastLoginAt`, and the privacy field used by #66.
+  - next-auth `Account`, `Session`, and `VerificationToken` tables are **NOT** added (JWT sessions — ADR 0002 §2 is authoritative; the session table is omitted by design to avoid extra writes per request).
+  - The `User` table is keyed by `steamId: String @id` and carries `createdAt`, `lastLoginAt`, `privacy @default(private)`, and `onboardedAt` — used by the onboarding backfill (#64) and privacy controls (#66).
   - Snapshot tables retain the append-only `(steamId, appId, date)` compound key and are verified to work for **many** users.
-  - A new **immutable** migration applies cleanly via `pnpm prisma migrate dev` on SQLite and is valid for Postgres; no existing migration is edited.
+  - A new **immutable** migration applies cleanly via `pnpm prisma migrate dev` on SQLite; no existing migration is edited.
 
 - [ ] **Session-scoped data layer** *(#62)*
   - No repository, RSC, route handler, or job reads `env.STEAM_ID` as "the user"; each reads the session user's `steamId` or an explicit profile param.
@@ -292,10 +292,10 @@ These gates apply to every PR regardless of phase. A task is not done until all 
   - CSRF protection is confirmed for every state-changing route.
 
 - [ ] **First-login onboarding backfill** *(#64)*
-  - A new user's first successful sign-in seeds reference rows + a baseline snapshot from their profile + owned games via `createMany({ skipDuplicates: true })`.
-  - The backfill is idempotent (a second login adds no duplicate rows) and respects the 1 req / 250 ms limiter with retry/backoff.
+  - A new user's first successful sign-in seeds reference rows + a baseline snapshot from their profile + owned games using per-row upserts (SQLite-compatible; `createMany({ skipDuplicates: true })` is not used — see ERR-0005).
+  - The backfill is idempotent (a second login adds no duplicate rows) and respects the 1 req / 250 ms limiter with retry/backoff; it runs through the same shared token-bucket client in `lib/steam/limiter.ts`.
   - During backfill the UI shows a designed "setting up your library" state; first paint is not blocked.
-  - A private profile at onboarding renders the locked state with a prompt to make the profile public; no crash, no fabricated data.
+  - A private profile at onboarding renders the locked state with a prompt to make the profile public; no crash, no fabricated data. Returns `{ onboarded: false, reason: 'private' }`.
 
 - [ ] **Auth UI** *(#65)*
   - A "Sign in with Steam" entry point starts the OpenID flow; the signed-in user menu shows avatar + persona name with sign-out and a link to account settings (#66).
@@ -310,7 +310,8 @@ These gates apply to every PR regardless of phase. A task is not done until all 
   - friends-only with an unavailable (private) friends list **fails closed** — treated as private, never exposed.
 
 - [ ] **Multi-user security + docs pass** *(#67)*
-  - `docs/SECURITY.md` threat model is rewritten for multi-user: session hijack, CSRF, IDOR / profile authorization, secret management, account-deletion / PII, and rate-budget abuse across users, each with documented controls.
-  - `docs/ROADMAP.md` lists Phase 6 and moves Steam OpenID out of stretch goals; `docs/ARCHITECTURE.md` replaces "the configured user" with the session-user model.
-  - `README.md` setup reflects sign-in and notes `STEAM_ID` is an optional dev / featured fallback.
-  - All links within `docs/` resolve (no 404s).
+  - `docs/SECURITY.md` threat model is rewritten for multi-user: session hijack, CSRF, OpenID flow forgery, IDOR / profile authorization, secret management, account-deletion / PII, and rate-budget abuse across users — each with documented controls and cross-references to the implementing Tasks.
+  - `ROADMAP.md` (repo root) lists Phase 6 as a committed/shipped phase and Steam OpenID is no longer in stretch goals; `docs/ARCHITECTURE.md` replaces "the configured user" framing with the session-user model and documents the auth layer.
+  - `README.md` setup reflects sign-in (documents `NEXTAUTH_SECRET` / `NEXTAUTH_URL`) and notes `STEAM_ID` is an optional dev / featured fallback — no longer required.
+  - [ADR 0002](adr/0002-multi-tenant-steam-openid-auth.md) is cross-linked from `docs/SECURITY.md`, `docs/ARCHITECTURE.md`, and this document.
+  - All links within `docs/` resolve (verified by `pnpm check:docs`).

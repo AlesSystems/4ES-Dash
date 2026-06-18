@@ -98,11 +98,11 @@
       "title": "multi-user security + docs pass",
       "issue": 67,
       "file": "03-tasks/09-docs-multi-user-pass.md",
-      "status": "todo",
-      "owner": null,
+      "status": "in-review",
+      "owner": "implementer-sonnet",
       "tests": [],
       "verdict": null,
-      "notes": "Tier 5. Depends on 01-08. Docs-only: SECURITY, ROADMAP, ARCHITECTURE, README, ACCEPTANCE."
+      "notes": "Tier 5. Docs-only. Updated: docs/SECURITY.md (threat model rewritten for multi-user, 10 threats with controls mapped to Tasks 02/05/08), ROADMAP.md (Phase 6 added as shipped, Steam OpenID removed from stretch goals), docs/ARCHITECTURE.md (auth layer + per-user data flow added, configured-user framing replaced with session-user model), README.md (NEXTAUTH_SECRET/NEXTAUTH_URL documented, STEAM_ID noted as optional fallback, sign-in flow explained), docs/ACCEPTANCE.md (Phase 6 section already existed — refined Prisma criterion to match ADR §2, fixed onboarding backfill criterion re: SQLite, updated #67 criterion to reference ROADMAP.md at root not docs/, added ADR cross-link). check:docs + lint + build all pass."
     }
   ]
 }
