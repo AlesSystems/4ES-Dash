@@ -87,8 +87,8 @@
       "title": "privacy controls + account settings",
       "issue": 66,
       "file": "03-tasks/08-privacy-account-settings.md",
-      "status": "todo",
-      "owner": null,
+      "status": "in-review",
+      "owner": "implementer-sonnet",
       "tests": ["tests/unit/account-settings.test.ts"],
       "verdict": null,
       "notes": "Tier 4. Depends on 03+05+06+07. Friends-only fails closed; delete removes all rows."

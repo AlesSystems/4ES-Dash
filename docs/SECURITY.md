@@ -23,6 +23,29 @@ This is a single-user (Phase 1) dashboard with a server-side Steam API key. The 
 - **Cookies (v2+)**: `HttpOnly`, `Secure`, `SameSite=Lax`. Session ID rotated on login.
 - **Store API calls (SSRF prevention)**: `lib/steam/store-client.ts` only ever connects to a hard-coded `store.steampowered.com` base URL. No user-supplied input is interpolated into the hostname. Only `appId` (integer) and `steamId` (17-digit string validated by Zod) are included as query/path parameters.
 
+### Multi-user & account data (Phase 6)
+
+> The full multi-user threat model is rewritten in Task 09 (#67); this section
+> records the account-data controls Task 08 introduces.
+
+- **Session-scoped data, no IDOR**: every "my" view, route handler, and account
+  action (`setPrivacy` / `resyncNow` / `deleteAccount`) derives the `steamId` from
+  the authenticated session (`getSessionUser()`), never from caller input — a user
+  cannot read or mutate another user's data by changing a parameter. Cross-user
+  reads go through `canViewProfile()` (`server/authz.ts`), which **fails closed**
+  for friends-only profiles when friendship cannot be verified.
+- **Account & data deletion (right to erasure)**: `deleteAccountData(steamId)`
+  (`server/repositories/account.ts`) removes **all** of the user's rows —
+  `PlaytimeSnapshot`, `AchievementSnapshot`, `OwnedGame`, `ManualGameData`,
+  `IdleDismissal`, and the `User` record — in a single atomic `prisma.$transaction`
+  (children first, parent last). There is **no FK cascade**, so the table list is
+  explicit and must be extended whenever a new `steamId`-keyed table is added
+  (see `docs/DATA_MODEL.md` §Privacy). A partial failure rolls back; no orphaned
+  PII is left behind. The UI requires an explicit type-to-confirm step, and the
+  JWT session cookie is cleared client-side (`signOut`) immediately after deletion.
+- **Privacy default**: new accounts default to `private` (ADR 0002 §4) — history is
+  hidden until the user opts into sharing.
+
 ## Reporting
 
 If you find a vulnerability, email the maintainer rather than filing a public issue. We'll respond within 7 days.
