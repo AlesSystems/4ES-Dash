@@ -269,10 +269,20 @@ export async function getSessionUser(): Promise<{ steamId: string } | null> {
  * authenticated session user, else the dev / featured-profile fallback
  * (`env.STEAM_ID`). Middleware guarantees a session on protected routes in
  * production; the fallback keeps local dev and tests working when no session is
- * present. Returns '' only if neither a session nor STEAM_ID exists — callers
- * pass it to repositories which throw MissingSteamIdError on blank input.
+ * present.
+ *
+ * IMPORTANT: In production, the STEAM_ID fallback is intentionally suppressed.
+ * Anonymous production visitors must NOT resolve to the owner's account — that
+ * would leak the owner's private dashboard data. The fallback only applies
+ * outside production (development / test), where no real session exists but a
+ * featured/dev profile is needed. Callers receiving '' degrade gracefully
+ * (e.g. show a landing page or return 401).
  */
 export async function getViewerSteamId(): Promise<string> {
   const session = await getSessionUser();
-  return session?.steamId ?? getEnv().STEAM_ID ?? '';
+  if (session?.steamId) return session.steamId;
+  // Featured/dev fallback must never leak the owner's account to anonymous
+  // production visitors — only apply it outside production.
+  if (getEnv().NODE_ENV !== 'production') return getEnv().STEAM_ID ?? '';
+  return '';
 }

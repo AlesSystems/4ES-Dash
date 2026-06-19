@@ -14,14 +14,14 @@ export interface CompareHeaderProps {
 export function CompareHeader({ a, b }: CompareHeaderProps): JSX.Element {
   return (
     <div
-      className="mb-7 flex items-stretch border-y border-border py-6"
+      className="mb-7 flex flex-col border-y border-border py-6 sm:flex-row sm:items-stretch"
       aria-label="Comparison header"
     >
       {/* Side A */}
       <UserColumn side={a} align="left" />
 
-      {/* Center "vs" divider */}
-      <div className="flex w-20 shrink-0 flex-col items-center justify-center border-x border-border">
+      {/* Center "vs" divider — full-width with horizontal borders on mobile; 80px column with vertical borders at sm+ */}
+      <div className="flex shrink-0 flex-col items-center justify-center border-y border-border py-2 sm:w-20 sm:border-x sm:border-y-0 sm:py-0">
         <span className="font-serif text-h2 italic text-text-3">vs</span>
         <span className="mt-2 font-mono text-caption uppercase tracking-widest text-text-3">
           compare

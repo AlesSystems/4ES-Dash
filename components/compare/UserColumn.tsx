@@ -26,7 +26,12 @@ export function UserColumn({ side, align = 'left' }: UserColumnProps): JSX.Eleme
   const displayName = profile?.personaName ?? friendlyFallbackName(steamId);
   const avatarUrl = profile?.avatar.full ?? null;
 
-  const alignClass = align === 'right' ? 'items-end text-right' : 'items-start text-left';
+  // On mobile the layout stacks vertically (items-start, text-left for both sides).
+  // At sm+ the right column flips to end-aligned to mirror side A.
+  const alignClass =
+    align === 'right'
+      ? 'items-start sm:items-end text-left sm:text-right'
+      : 'items-start text-left';
 
   return (
     <div className={`flex flex-1 flex-col gap-4 ${alignClass}`}>
@@ -50,7 +55,9 @@ export function UserColumn({ side, align = 'left' }: UserColumnProps): JSX.Eleme
       {isPrivate ? (
         <p className="text-body italic text-text-3">Library is private</p>
       ) : (
-        <div className={`flex gap-6 ${align === 'right' ? 'flex-row-reverse' : 'flex-row'}`}>
+        <div
+          className={`flex gap-6 ${align === 'right' ? 'flex-row sm:flex-row-reverse' : 'flex-row'}`}
+        >
           <div className={`flex flex-col ${alignClass}`}>
             <span className="font-serif text-stat tabular-nums text-text-1">
               {gamesCount !== null ? gamesCount.toLocaleString() : '—'}

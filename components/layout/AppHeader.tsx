@@ -6,6 +6,7 @@ import { isSteamApiError } from '@/lib/steam/errors';
 import { formatHours } from '@/lib/format/playtime';
 import { AuthControls } from '@/components/auth/AuthControls';
 import { NavLinks } from './NavLinks';
+import { MobileNav } from './MobileNav';
 import { ThemeToggle } from './ThemeToggle';
 
 // ---------------------------------------------------------------------------
@@ -60,6 +61,9 @@ export async function AppHeader(): Promise<JSX.Element> {
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-bg">
       <div className="flex h-14 items-center gap-3 px-4 sm:gap-6 sm:px-6 lg:px-8">
+        {/* Mobile navigation — hamburger + drawer, hidden at lg+ */}
+        <MobileNav />
+
         {/* Wordmark — amber dot logo + "4es" (serif italic) · "dash" (sans) */}
         <Link
           href="/"
@@ -75,8 +79,10 @@ export async function AppHeader(): Promise<JSX.Element> {
           <span className="text-caption font-medium uppercase tracking-wide text-text-2">dash</span>
         </Link>
 
-        {/* Primary navigation */}
-        <NavLinks />
+        {/* Primary navigation — desktop only; mobile uses the drawer above */}
+        <div className="hidden lg:block">
+          <NavLinks />
+        </div>
 
         {/* Spacer */}
         <div className="flex-1" />
