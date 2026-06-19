@@ -17,6 +17,7 @@ import { prisma } from '@/server/db';
 import { getProfile } from '@/server/repositories/profile';
 import { getGameAchievements } from '@/server/repositories/achievements';
 import { refreshLibraryValueAggregate } from '@/server/repositories/library-value';
+import { refreshGameStoreData } from '@/server/repositories/game-store';
 import { getEnv } from '@/server/env';
 import { topGamesByPlaytime } from '@/lib/games/select';
 import type { OwnedGame } from '@/lib/steam/schemas';
@@ -162,6 +163,16 @@ export async function runSnapshot(): Promise<SnapshotResult> {
       await refreshLibraryValueAggregate(steamId, games);
     } catch (err) {
       console.error('[snapshot] library-value aggregate refresh failed steamId=%s', steamId, err);
+    }
+
+    // Persist per-game genres + current price into the Game table OFF the request
+    // path (ERR-0011) so the Insights pages (genres, cost-per-hour) read these
+    // columns instead of pricing/typing every game live on render. Best-effort:
+    // a Store hiccup must not fail the snapshot.
+    try {
+      await refreshGameStoreData(games);
+    } catch (err) {
+      console.error('[snapshot] game store data refresh failed steamId=%s', steamId, err);
     }
 
     const result: SnapshotResult = {

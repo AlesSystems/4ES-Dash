@@ -56,6 +56,16 @@ model Game {
   hasStats    Boolean   @default(false)
   refreshedAt DateTime  @default(now())
 
+  // Current Store price, refreshed OFF the request path by the nightly job
+  // (refreshGameStoreData). Insights pages READ these instead of pricing every
+  // game live on render (ERR-0011) — same precompute-and-read pattern as
+  // LibraryValueAggregate. priceRefreshedAt is null until the first job run, so
+  // cost-per-hour treats a null here as "price unavailable" (excluded), never $0.
+  priceFinalCents  Int?      // current final price in minor units (cents); null = unknown/unavailable
+  priceCurrency    String?   // ISO 4217 currency code for priceFinalCents
+  priceIsFree      Boolean?  // true = free-to-play; false = paid; null = not yet priced
+  priceRefreshedAt DateTime? // when price + genres were last refreshed; null = never
+
   owners       OwnedGame[]
   achievements Achievement[]
 }

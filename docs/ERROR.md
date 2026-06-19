@@ -25,6 +25,8 @@ Rules:
 | ERR-0008 | 2026-06-18 | frontend | Medium | Genre breakdown showed "No genre data yet" for a signed-in-but-not-onboarded user until a manual re-sync | Fixed |
 | ERR-0009 | 2026-06-18 | jobs | Medium | Year-in-Review "achievements unlocked" was always 0 — counted as a cumulative-snapshot delta with ≤1 snapshot/year | Fixed |
 | ERR-0010 | 2026-06-19 | frontend | High | Dashboard cold load scaled O(N games) — library value priced every game live behind the shared limiter; no cache single-flight | Fixed |
+| ERR-0011 | 2026-06-19 | frontend | High | Insights pages (genres, cost-per-hour) don't load — O(N) live Store/SteamSpy fan-out on render | Fixed |
+| ERR-0012 | 2026-06-19 | db | High | History page showed fake (seeded) playtime under a real user's account | Fixed |
 
 **Allowed values**
 
@@ -273,6 +275,48 @@ Copy this block when adding a new entry. Replace every placeholder including the
 **Where else this assumption may be wrong:** Any page that aggregates a per-game/per-resource Steam call on render (genres, multiplayer, cost-per-hour). Each should read a precomputed aggregate or run behind Suspense with a bounded fan-out, never a synchronous library-wide loop.
 
 **Prevented by:** A test asserting `getLibraryValue` performs zero `getGameStorePrice` calls (reads the aggregate), a cache single-flight test (N misses → 1 loader call), and a store-limiter separation test (a store flood does not delay a Web API acquire).
+
+---
+
+### ERR-0011 — Insights pages (genres, cost-per-hour) don't load — O(N) live Store/SteamSpy fan-out on render
+
+**Date:** 2026-06-19
+**Module:** frontend
+**Severity:** High
+**Status:** Fixed
+
+**Symptom:** `/insights/genres` (the "Insights" nav target) never finishes loading; `/insights/cost-per-hour` is similarly slow. Measured with a real 65-game account: `getGenreBreakdown` took **64.8 s** and `getCostPerHour` **16.3 s** on a cold cache, versus < 3 ms for the DB-only history/idle pages. On Vercel this exceeds the serverless function timeout → the page never renders.
+
+**Root cause:** The exact O(N) live-fan-out pattern flagged (but not fixed) under ERR-0010's "Where else this assumption may be wrong: genres, cost-per-hour". `server/repositories/insights/genres.ts` called `getGameStoreMetadata(appId)` **per owned game** on the render path — plus `getSteamSpyData(appId)` per game when `ENABLE_STEAMSPY` was on (130 serialized calls @ 1 req/250 ms ≈ 65 s). `server/repositories/insights/cost-per-hour.ts` called `getGameStorePrice(appId)` per game. Because the pages are `force-dynamic` and prod has no shared cache (`REDIS_URL` unset → per-instance in-memory LRU lost on cold start), every visit re-fanned-out. The `Game.genres` column existed specifically to hold this data but was written as `'[]'` by `onboarding-backfill.ts` and never populated.
+
+**Fix:** Migrated both pages to the precompute-in-job / read-aggregate pattern (same as ERR-0010). The nightly snapshot job + onboarding backfill now persist per-game genres into `Game.genres` and per-game price into new `Game.priceFinalCents`/`priceCurrency`/`priceIsFree`/`priceRefreshedAt` columns (additive migration), reusing the job's existing Store fan-out. `getGenreBreakdown` and `getCostPerHour` now read these from the `Game` table — zero Store calls on the render path, independent of library size. SteamSpy enrichment defaults off (`ENABLE_STEAMSPY=0`); when enabled it remains a known render-path fan-out (follow-up: persist tags).
+
+**Generalized rule:** (Restates ERR-0010.) No interactive render path may contain an O(N-resource) rate-limited fan-out. When an ERR entry names sibling pages under "where else this may be wrong", treat that as a defect list — fix or ticket them, don't leave them latent.
+
+**Where else this assumption may be wrong:** `/insights` SteamSpy tag breakdown when `ENABLE_STEAMSPY=1` still fans out per game on render (tags are not yet persisted). Any future per-game Steam aggregate page must read a precomputed column/row.
+
+**Prevented by:** Tests asserting `getGenreBreakdown`/`getCostPerHour` issue **zero** `getGameStoreMetadata`/`getGameStorePrice` calls (read from DB), and that the nightly job populates `Game.genres`/price columns.
+
+---
+
+### ERR-0012 — History page showed fake (seeded) playtime under a real user's account
+
+**Date:** 2026-06-19
+**Module:** db
+**Severity:** High
+**Status:** Fixed
+
+**Symptom:** The playtime history chart showed ~2 months of daily playtime for exactly 5 games (Counter-Strike 2, Dota 2, Team Fortress 2, The Witcher 3, Baldur's Gate 3) that did not reflect the user's real activity — "fake data".
+
+**Root cause:** `prisma/seed.ts` writes synthetic 60-day history under `process.env.STEAM_ID ?? '76561190000000000'`. It was run while `STEAM_ID` was set to a **real** SteamID (`76561198848120642`), injecting 220 fake `PlaytimeSnapshot` rows into that real account. The real onboarding produced exactly one baseline snapshot per game (2026-06-18); the 5 seed games additionally had 20–61 days of synthetic history (2026-04-19 → 2026-06-17), which dominated the chart. (Compounding config smell: `.env` `STEAM_ID` was left as the seed placeholder, so the nightly job also targeted a non-existent account and real history never accrued — cf. ERR-0007, placeholder STEAM_ID leaking into a user-facing surface.)
+
+**Fix:** (1) Data: deleted the 220 pre-onboarding fake rows (`date < onboarding day`), keeping the 65 real baseline rows (DB backed up first). (2) Code: `prisma/seed.ts` hardened to write only under a dedicated synthetic SteamID, never `process.env.STEAM_ID`, so it can never pollute a real account regardless of env. (3) Config: `.env` `STEAM_ID` set to the real account so the featured-profile fallback and nightly job target it.
+
+**Generalized rule:** A dev/demo seed must write only to an isolated, clearly-synthetic identity that can never collide with real data — never key synthetic rows off an ambient env var that may hold a real identifier. Snapshot tables are append-only and trusted by every time-series; polluting them corrupts every derived view.
+
+**Where else this assumption may be wrong:** Any script that mutates per-user tables keyed off `process.env.STEAM_ID` (other seeds, backfills, one-off migrations). The featured-profile fallback (`getViewerSteamId` → `getEnv().STEAM_ID`) surfaces whatever STEAM_ID points at, so a wrong value shows wrong/empty data on every "my" view when logged out.
+
+**Prevented by:** A test asserting `seed.ts` targets the synthetic ID even when `process.env.STEAM_ID` is set to a different value, plus the production-refusal guard.
 
 ---
 

@@ -121,6 +121,24 @@ describe('POST /api/cron/snapshot — snapshot run', () => {
     expect(job?.finishedAt).not.toBeNull();
     expect(job?.payload).toBeTruthy();
   });
+
+  it('populates Game.priceRefreshedAt and genres for owned games (proves refreshGameStoreData ran)', async () => {
+    const res = await post({ 'x-cron-secret': SECRET });
+    expect(res.status).toBe(200);
+
+    // refreshGameStoreData always writes priceRefreshedAt (even when the Store
+    // API degrades gracefully) and genres as a JSON string.  If that call were
+    // removed from runSnapshot(), both fields would be absent and this test fails.
+    const game730 = await prisma.game.findUnique({ where: { appId: 730 } });
+    expect(game730).not.toBeNull();
+    expect(game730?.priceRefreshedAt).toBeInstanceOf(Date);
+    expect(typeof game730?.genres).toBe('string');
+
+    const game570 = await prisma.game.findUnique({ where: { appId: 570 } });
+    expect(game570).not.toBeNull();
+    expect(game570?.priceRefreshedAt).toBeInstanceOf(Date);
+    expect(typeof game570?.genres).toBe('string');
+  });
 });
 
 describe('getFirstSeenDates — inferred acquiredAt (#26)', () => {

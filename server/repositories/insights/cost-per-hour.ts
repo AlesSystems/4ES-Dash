@@ -8,23 +8,27 @@
  * accurate and no price-paid figure is surfaced here. Imported ManualGameData
  * (#40) is captured/stored but intentionally NOT used as the price source for
  * this ranking. (See PR #74 discussion: ACCEPTANCE.md #36 governs this page.)
+ *
+ * Price data is read from the Game table (populated nightly by the enrichment
+ * job) — zero Store API calls on the render path.
  */
 
 import { prisma } from '@/server/db';
 import { requireSteamId } from '@/server/repositories/require-steam-id';
-import { getGameStorePrice } from '@/server/repositories/store';
 import {
   rankCostPerHour,
   type CostPerHourResult,
   type CostInput,
   type CostPrice,
 } from '@/lib/insights';
-import { isAvailable } from '@/lib/result';
 
 /**
  * Computes cost-per-hour rankings for the user's owned games from current
- * store prices: unavailable → excluded; free/zero → listed separately; else
- * paid with the store's finalCents + currency.
+ * store prices stored in the Game table:
+ *   - no Game row OR priceRefreshedAt == null → unavailable (excluded)
+ *   - priceIsFree === true → free
+ *   - priceIsFree === false && priceFinalCents != null → paid
+ *   - otherwise → unavailable
  */
 export async function getCostPerHour(
   steamId: string,
@@ -40,40 +44,45 @@ export async function getCostPerHour(
 
   const gameRecords = await prisma.game.findMany({
     where: { appId: { in: appIds } },
-    select: { appId: true, name: true },
+    select: {
+      appId: true,
+      name: true,
+      priceFinalCents: true,
+      priceCurrency: true,
+      priceIsFree: true,
+      priceRefreshedAt: true,
+    },
   });
 
-  const names = new Map<number, string>(gameRecords.map((g) => [g.appId, g.name]));
+  type GameRow = (typeof gameRecords)[number];
+  const gameMap = new Map<number, GameRow>(gameRecords.map((g) => [g.appId, g]));
 
-  let stale = false;
+  const inputs: CostInput[] = ownedGames.map((game): CostInput => {
+    const { appId, playtimeForever } = game;
+    const row = gameMap.get(appId);
+    const name = row?.name ?? `App ${appId}`;
 
-  const inputs: CostInput[] = await Promise.all(
-    ownedGames.map(async (game): Promise<CostInput> => {
-      const { appId, playtimeForever } = game;
-      const name = names.get(appId) ?? `App ${appId}`;
+    let price: CostPrice;
 
-      let price: CostPrice;
+    if (!row || row.priceRefreshedAt === null) {
+      // Never priced or no record — treat as unavailable
+      price = { kind: 'unavailable' };
+    } else if (row.priceIsFree === true) {
+      price = { kind: 'free' };
+    } else if (row.priceIsFree === false && row.priceFinalCents != null) {
+      price = {
+        kind: 'paid',
+        cents: row.priceFinalCents,
+        currency: row.priceCurrency ?? 'USD',
+      };
+    } else {
+      // priceIsFree is null or priceFinalCents is null despite priceIsFree=false
+      price = { kind: 'unavailable' };
+    }
 
-      const storePriceResult = await getGameStorePrice(appId);
-      if (!isAvailable(storePriceResult)) {
-        price = { kind: 'unavailable' };
-      } else {
-        if (storePriceResult.stale) stale = true;
-        const storePrice = storePriceResult.data;
-        if (storePrice === null || storePrice.finalCents === 0) {
-          price = { kind: 'free' };
-        } else {
-          price = {
-            kind: 'paid',
-            cents: storePrice.finalCents,
-            currency: storePrice.currency,
-          };
-        }
-      }
+    return { appId, name, playtimeMinutes: playtimeForever, price };
+  });
 
-      return { appId, name, playtimeMinutes: playtimeForever, price };
-    }),
-  );
-
-  return { result: rankCostPerHour(inputs), stale };
+  // DB read is never stale
+  return { result: rankCostPerHour(inputs), stale: false };
 }
