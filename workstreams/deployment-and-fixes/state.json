@@ -11,95 +11,99 @@
       "title": "optimize the slow dashboard",
       "issue": 85,
       "file": "03-tasks/01-dashboard-performance.md",
-      "status": "todo",
-      "owner": null,
+      "status": "done",
+      "owner": "orchestrator",
       "tests": [
-        "tests/unit/dashboard-steam-fanout.test.ts",
+        "tests/unit/library-value.test.ts",
         "tests/unit/cache-single-flight.test.ts",
         "tests/unit/store-limiter.test.ts"
       ],
-      "verdict": null,
-      "notes": "Tier 2. Root cause: library-value.ts prices every game live behind the shared 250ms limiter; achievements awaited on the blocking path; no cache single-flight (ERR-0003). MERGE POINT: server/jobs/snapshot.ts (with 07) + server/cache.ts (with 02). One new migration for the pre-computed aggregate."
+      "verdict": "APPROVE",
+      "notes": "Tier 2. Library value pre-computed in the nightly job (LibraryValueAggregate, new migration); getLibraryValue reads the row (0 Store calls), 'value pending' before first run. LibraryValueSection + AchievementSummarySection stream in own Suspense, steamId passed once. Dedicated storeLimiter; cache single-flight. ERR-0010 (closes ERR-0003)."
     },
     {
       "id": "02",
       "title": "deploy to Vercel (Postgres, cron, env, button)",
       "issue": 86,
       "file": "03-tasks/02-vercel-deploy.md",
-      "status": "todo",
-      "owner": null,
+      "status": "done",
+      "owner": "orchestrator",
       "tests": [
         "tests/unit/cron-auth.test.ts",
         "tests/unit/auth-callback-url.test.ts"
       ],
-      "verdict": null,
-      "notes": "Tier 3 (ship last). Absorbs #45 (one-click button). Blockers: SQLite->Postgres (provider switch + db push, migrations immutable), no vercel.json, cron reads x-cron-secret/POST but Vercel sends Authorization: Bearer/GET, build doesn't provision DB, Redis unimplemented. MERGE POINT: snapshot.ts + cache.ts. Real deploy + Vercel env is the human's step."
+      "verdict": "APPROVE",
+      "notes": "Tier 3. Absorbs #45. Cron GET+POST accepts Authorization: Bearer AND x-cron-secret (timing-safe); vercel.json crons; vercel-build flips provider->postgresql (scripts/use-postgres-schema.mjs) + prisma db push (committed schema stays sqlite so dev/CI suite stays green); callback derives from NEXTAUTH_URL; README deploy button + DEPLOYMENT.md. Redis + single-STEAM_ID documented as v1 limitations. Real prod deploy + Vercel env is the human's step."
     },
     {
       "id": "03",
       "title": "add History + Friends to the sidebar",
       "issue": 87,
       "file": "03-tasks/03-sidebar-history-friends.md",
-      "status": "todo",
-      "owner": null,
+      "status": "done",
+      "owner": "orchestrator",
       "tests": ["tests/unit/SidebarNav.test.tsx"],
-      "verdict": null,
-      "notes": "Tier 0 (quick, independent). Root cause: SidebarNav.tsx items array omits History/Friends though NavLinks.tsx already has them; stale 'intentionally omitted' docblock. Both routes are real + middleware-protected."
+      "verdict": "APPROVE",
+      "notes": "Tier 0. Sidebar renders 6 links in order with active state + lucide icons (Clock/Users)."
     },
     {
       "id": "04",
       "title": "compare: fix 'shared games can't be computed'",
       "issue": 88,
       "file": "03-tasks/04-compare-shared-games.md",
-      "status": "todo",
-      "owner": null,
-      "tests": ["tests/integration/compare-repo.test.ts"],
-      "verdict": null,
-      "notes": "Tier 1. SHIPS WITH 05 IN ONE PR (shared root cause, same file). Root cause: app/compare/page.tsx defaults side A to getEnv().STEAM_ID = placeholder 76561190000000000 (non-existent account) -> games null -> 'Try again shortly'. Missed in Phase 6 #81 session migration. Fix: getViewerSteamId()."
+      "status": "done",
+      "owner": "orchestrator",
+      "tests": ["tests/unit/app/compare-page.test.tsx", "tests/integration/compare-repo.test.ts"],
+      "verdict": "APPROVE",
+      "notes": "Tier 1. Shipped with 05 in one PR. Side A resolves from getSessionUser() (NOT env.STEAM_ID); anonymous + no ?a= -> EmptyState, placeholder never fetched. ERR-0007."
     },
     {
       "id": "05",
       "title": "compare: don't render a raw SteamID as a name",
       "issue": 89,
       "file": "03-tasks/05-compare-name-display.md",
-      "status": "todo",
-      "owner": null,
-      "tests": ["tests/unit/UserColumn.test.tsx"],
-      "verdict": null,
-      "notes": "Tier 1. SHIPS WITH 04 IN ONE PR. Root cause: same placeholder origin as 04, plus independent display fallback (personaName ?? steamId) renders a 17-digit id as a name when profile is null. Fix: friendly fallback token, never /^\\d{17}$/."
+      "status": "done",
+      "owner": "orchestrator",
+      "tests": ["tests/unit/app/compare-page.test.tsx"],
+      "verdict": "APPROVE",
+      "notes": "Tier 1. Shipped with 04. friendlyName/friendlyFallbackName in page + UserColumn; a displayed name never matches /^\\d{17}$/. ERR-0007."
     },
     {
       "id": "06",
       "title": "genres empty until re-sync: gate on onboarding",
       "issue": 90,
       "file": "03-tasks/06-genres-onboarding-gate.md",
-      "status": "todo",
-      "owner": null,
-      "tests": ["tests/unit/onboarding-gate.test.ts"],
-      "verdict": null,
-      "notes": "Tier 1. Root cause: ownedGame rows only written by runOnboardingBackfill (onboarding/re-sync); auth signIn doesn't backfill and nothing gates a not-yet-onboarded session to /onboarding, so /insights/genres shows 'No genre data yet' until re-sync. Fix: gate on User.onboardedAt. Do NOT add fan-out to render."
+      "status": "done",
+      "owner": "orchestrator",
+      "tests": ["tests/unit/onboarding-gate.test.ts", "tests/unit/app/genres-page.test.tsx"],
+      "verdict": "APPROVE",
+      "notes": "Tier 1. server/onboarding-gate.ts#getOnboardingStatus (cheap onboardedAt read, no Steam fan-out); /insights/genres redirects not-onboarded to /onboarding; 'No genre data yet' only for onboarded-empty. ERR-0008."
     },
     {
       "id": "07",
       "title": "Year in Review: achievements unlocked is 0",
       "issue": 91,
       "file": "03-tasks/07-year-in-review-achievements.md",
-      "status": "todo",
-      "owner": null,
-      "tests": ["tests/unit/insights-repo-year-in-review.test.ts"],
-      "verdict": null,
-      "notes": "Tier 1. Root cause: count is a delta of cumulative unlockedCount snapshots; <=1 snapshot/year (onboarding seeds no achievement baseline) -> 0. Real per-achievement unlockedAt is discarded. Fix: count by unlockedAt UTC year via a new AchievementUnlock table written by the nightly job. MERGE POINT: snapshot.ts (with 01/02). One new migration."
+      "status": "done",
+      "owner": "orchestrator",
+      "tests": [
+        "tests/unit/insights-year-in-review.test.ts",
+        "tests/unit/insights-repo-year-in-review.test.ts",
+        "tests/unit/snapshot-achievement-unlocks.test.ts"
+      ],
+      "verdict": "APPROVE",
+      "notes": "Tier 1. New AchievementUnlock event table (new migration). countUnlocksInYear by real unlockedAt UTC year (seconds->ms guarded, unlocktime 0 excluded, top-N independent). recordAchievementUnlocks writes events for ALL achievement-bearing games in the nightly job + onboarding (criterion #6); write path tested. ERR-0009."
     },
     {
       "id": "08",
       "title": "add a browser/tab icon (favicon)",
       "issue": 92,
       "file": "03-tasks/08-browser-icon.md",
-      "status": "todo",
-      "owner": null,
-      "tests": ["tests/unit/app-icon-head.test.ts"],
-      "verdict": null,
-      "notes": "Tier 0 (quick, independent). Root cause: no favicon at all (no app/icon.*, no public/, no metadata.icons). Fix: file-based app/icon.svg (or app/icon.tsx) reproducing the amber-dot brand mark (#e8a05c). SVG escapes the *.ts(x) gate -> use icon.tsx or add a head test."
+      "status": "done",
+      "owner": "orchestrator",
+      "tests": ["tests/unit/app/app-icon.test.ts"],
+      "verdict": "APPROVE",
+      "notes": "Tier 0. app/icon.tsx (ImageResponse) amber-dot mark #e8a05c; /icon in build output."
     }
   ]
 }

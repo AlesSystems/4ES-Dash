@@ -1,15 +1,23 @@
 /**
- * Aggregates the current Steam store prices for all owned games into a single
- * library value summary (issue #29).
+ * Library value (#29) — current Steam store value of a user's library.
  *
- * Uses getGameStorePrice (1-hour TTL via server/cache/ttl.ts) — never adds its
- * own TTL or magic numbers. Never throws; degrades gracefully per Availability<T>.
+ * Performance (#85): pricing every owned game is O(N) rate-limited Store calls.
+ * That work runs in the NIGHTLY JOB via {@link refreshLibraryValueAggregate},
+ * which writes one `LibraryValueAggregate` row. The dashboard render path calls
+ * {@link getLibraryValue}, which only READS that row — its Steam fan-out is zero
+ * and independent of library size. Before the first nightly run the row is
+ * absent and `getLibraryValue` returns `unavailable('not-tracked')` so the UI
+ * shows a designed "value pending" state — never a synchronous live fan-out and
+ * never a fabricated $0.
+ *
+ * Degrades gracefully per Availability<T>; never throws.
  */
 
-import { getProfile } from '@/server/repositories/profile';
+import { prisma } from '@/server/db';
 import { getGameStorePrice } from '@/server/repositories/store';
 import { requireSteamId } from '@/server/repositories/require-steam-id';
-import { isAvailable } from '@/lib/result';
+import { available, unavailable, isAvailable, type Availability } from '@/lib/result';
+import type { OwnedGame } from '@/lib/steam/schemas';
 
 export interface LibraryValue {
   /** Sum of finalCents across priced games (free/missing contribute 0). */
@@ -22,27 +30,52 @@ export interface LibraryValue {
   freeCount: number;
   /** Games where the Store API was unavailable; treated as 0, never NaN. */
   missingCount: number;
-  /** True if any underlying price result was served stale. */
+  /** True if any underlying price result was served stale at compute time. */
   stale: boolean;
 }
 
 /**
- * Returns the aggregated current store value of the given user's library.
+ * Reads the pre-computed library-value aggregate for a user (written nightly by
+ * {@link refreshLibraryValueAggregate}). Returns `unavailable('not-tracked')`
+ * when no aggregate exists yet (e.g. before the first nightly run) so the UI can
+ * render a "value pending" state. **Does no Store pricing** — the render path is
+ * a single indexed row read, independent of library size.
+ */
+export async function getLibraryValue(steamId: string): Promise<Availability<LibraryValue>> {
+  const id = requireSteamId(steamId, 'getLibraryValue');
+
+  const row = await prisma.libraryValueAggregate.findUnique({ where: { steamId: id } });
+  if (row === null) {
+    return unavailable('not-tracked', 'Library value is still being computed.');
+  }
+
+  return available({
+    totalMinor: row.totalMinor,
+    currency: row.currency,
+    pricedCount: row.pricedCount,
+    freeCount: row.freeCount,
+    missingCount: row.missingCount,
+    stale: false,
+  });
+}
+
+/**
+ * Computes the current store value of `games` (O(N) rate-limited Store calls)
+ * and upserts the `LibraryValueAggregate` row for `steamId`. Runs OFF the
+ * request path (nightly snapshot job) so the dashboard never pays this cost.
  *
  * Accounting rules:
- * - available(StorePrice)    → priced: adds finalCents, increments pricedCount.
- * - available(null)          → free: increments freeCount, adds 0 to total.
- * - unavailable(...)         → missing: increments missingCount, adds 0 to total.
+ * - available(StorePrice) → priced: adds finalCents, increments pricedCount.
+ * - available(null)       → free: increments freeCount, adds 0 to total.
+ * - unavailable(...)      → missing: increments missingCount, adds 0 to total.
  *
- * Promise.all is used so the Store client's global rate-limiter serialises
- * naturally; no additional throttle is introduced here.
- *
- * @param steamId - Required. Pass getEnv().STEAM_ID at the call site for the
- *   featured/dev default — never read env.STEAM_ID inside this repository.
+ * Returns the computed {@link LibraryValue}. Never throws.
  */
-export async function getLibraryValue(steamId: string): Promise<LibraryValue> {
-  const id = requireSteamId(steamId, 'getLibraryValue');
-  const { games } = await getProfile(id);
+export async function refreshLibraryValueAggregate(
+  steamId: string,
+  games: OwnedGame[],
+): Promise<LibraryValue> {
+  const id = requireSteamId(steamId, 'refreshLibraryValueAggregate');
 
   const prices = await Promise.all(games.map((g) => getGameStorePrice(g.appId)));
 
@@ -71,6 +104,12 @@ export async function getLibraryValue(steamId: string): Promise<LibraryValue> {
       missingCount++;
     }
   }
+
+  await prisma.libraryValueAggregate.upsert({
+    where: { steamId: id },
+    create: { steamId: id, totalMinor, currency, pricedCount, freeCount, missingCount },
+    update: { totalMinor, currency, pricedCount, freeCount, missingCount, computedAt: new Date() },
+  });
 
   return { totalMinor, currency, pricedCount, freeCount, missingCount, stale };
 }

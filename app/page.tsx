@@ -12,14 +12,16 @@ import {
   LibraryValueSection,
   LibraryValueSkeleton,
 } from '@/components/dashboard/LibraryValueSection';
-import { AchievementSummary } from '@/components/dashboard/AchievementSummary';
+import {
+  AchievementSummarySection,
+  AchievementSummarySkeleton,
+} from '@/components/dashboard/AchievementSummarySection';
 import { EmptyState } from '@/components/states/EmptyState';
 import { StaleBanner } from '@/components/states/StaleBanner';
 import { Landing } from '@/components/marketing/Landing';
 import { getProfile } from '@/server/repositories/profile';
 import { getLevel } from '@/server/repositories/level';
 import { getRecentlyPlayed } from '@/server/repositories/recently-played';
-import { getAchievementProgress } from '@/server/repositories/achievements';
 import { getFirstSeenDates } from '@/server/repositories/snapshots';
 import { getViewerSteamId } from '@/server/auth';
 import type { Metadata } from 'next';
@@ -73,17 +75,18 @@ export default async function HomePage() {
   // achievements — not the whole library. Each game costs up to 3 rate-limited
   // Steam calls (≈250 ms each), so aggregating all of them blows the dashboard's
   // load budget (~38 s cold for a 50-game library). Bounding to the top N keeps
-  // the glanceable summary fast; the cache warms over time. See ERR-0003.
+  // the glanceable summary fast; the cache warms over time. See ERR-0003. The
+  // aggregate is NOT awaited here — it streams in its own <Suspense> boundary
+  // (AchievementSummarySection) so it never blocks first paint (#85).
   const ACHIEVEMENT_SUMMARY_GAME_LIMIT = 20;
   const achievementAppIds = topGamesByPlaytime(
     games.filter((g) => g.hasAchievements),
     ACHIEVEMENT_SUMMARY_GAME_LIMIT,
   ).map((g) => g.appId);
 
-  const [level, recent, achievements, firstSeen] = await Promise.all([
+  const [level, recent, firstSeen] = await Promise.all([
     getLevel(featuredId).catch(() => ({ level: null, stale: false })),
     getRecentlyPlayed(featuredId),
-    getAchievementProgress(featuredId, achievementAppIds),
     // Inferred acquiredAt for the backlog's "oldest unplayed" (#28). Degrades to
     // no dates if the snapshot table is empty or unreadable — never blocks.
     getFirstSeenDates(featuredId).catch(() => new Map<number, string>()),
@@ -96,7 +99,6 @@ export default async function HomePage() {
   }));
   const totalPlaytimeMinutes = games.reduce((sum, g) => sum + g.playtime.total, 0);
   const untouchedCount = games.filter((g) => g.playtime.total === 0).length;
-  const achievementPercent = achievements.available ? achievements.data.percent : null;
   const stale = profileStale || recent.stale;
 
   // Oldest unplayed game by inferred acquiredAt (#28).
@@ -120,11 +122,15 @@ export default async function HomePage() {
 
       {stale ? <StaleBanner className="mb-6" /> : null}
 
+      {/* Achievement % is sourced from the deferred achievement aggregate (#85),
+          so it is not part of the initial blocking payload — the KPI tile shows
+          its designed pending state and the full % streams into the
+          AchievementSummary section below. */}
       <KpiRow
         totalPlaytimeMinutes={totalPlaytimeMinutes}
         librarySize={games.length}
         recentlyPlayedCount={recent.games.length}
-        achievementPercent={achievementPercent}
+        achievementPercent={null}
       />
 
       <div className="mb-8">
@@ -142,9 +148,11 @@ export default async function HomePage() {
             oldestUnplayed={oldestUnplayedGame}
           />
           <Suspense fallback={<LibraryValueSkeleton />}>
-            <LibraryValueSection />
+            <LibraryValueSection steamId={featuredId} />
           </Suspense>
-          <AchievementSummary result={achievements} />
+          <Suspense fallback={<AchievementSummarySkeleton />}>
+            <AchievementSummarySection steamId={featuredId} appIds={achievementAppIds} />
+          </Suspense>
         </div>
       </div>
     </main>

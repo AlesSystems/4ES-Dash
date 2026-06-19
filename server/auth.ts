@@ -30,6 +30,23 @@ const STEAM_OPENID_REGEX = /^https?:\/\/steamcommunity\.com\/openid\/id\/(\d{17}
 const STEAM_OPENID_URL = 'https://steamcommunity.com/openid/login';
 
 /**
+ * Builds the OpenID callback URL from the deployment's canonical origin (#86).
+ *
+ * In production this MUST be the deployed HTTPS origin (`NEXTAUTH_URL`), never
+ * localhost — Steam redirects the user back to exactly this URL after sign-in.
+ * `getEnv()` already fails fast when `NEXTAUTH_URL` is missing/malformed, so the
+ * `http://localhost:3000` default here only ever applies to local `pnpm dev`
+ * where the var is genuinely unset. Trailing slashes are stripped so the path
+ * isn't doubled.
+ *
+ * @param baseUrl - The canonical origin (e.g. `https://my-app.vercel.app`).
+ */
+export function authCallbackUrl(baseUrl?: string): string {
+  const origin = (baseUrl ?? 'http://localhost:3000').replace(/\/+$/, '');
+  return `${origin}/api/auth/callback`;
+}
+
+/**
  * Extracts the 17-digit SteamID64 from a Steam OpenID claimed_id URL.
  *
  * @param claimedId - The full URL returned by Steam's OpenID endpoint,
@@ -138,7 +155,7 @@ export function buildAuthOptions(req: Request | NextRequest): AuthOptions {
     providers: [
       Steam(req as NextRequest, {
         clientSecret: process.env['STEAM_API_KEY'] ?? '',
-        callbackUrl: `${process.env['NEXTAUTH_URL'] ?? 'http://localhost:3000'}/api/auth/callback`,
+        callbackUrl: authCallbackUrl(process.env['NEXTAUTH_URL']),
       }),
     ],
 

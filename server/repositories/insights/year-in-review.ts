@@ -34,22 +34,21 @@ export async function getAvailableReviewYears(steamId: string): Promise<number[]
 export async function getYearInReview(steamId: string, year: number): Promise<YearInReview> {
   const id = requireSteamId(steamId, 'getYearInReview');
 
-  const [playtimeRows, achievementRows] = await Promise.all([
+  const [playtimeRows, unlockRows] = await Promise.all([
     prisma.playtimeSnapshot.findMany({
       where: { steamId: id },
       select: { appId: true, date: true, playtimeForever: true },
     }),
-    prisma.achievementSnapshot.findMany({
+    // Per-achievement unlock EVENTS (#91). achievementsUnlocked is counted from
+    // these by real unlockedAt UTC year — not a cumulative-snapshot delta.
+    prisma.achievementUnlock.findMany({
       where: { steamId: id },
-      select: { appId: true, date: true, unlockedCount: true },
+      select: { steamId: true, appId: true, apiName: true, unlockedAt: true },
     }),
   ]);
 
-  // Collect unique appIds from both snapshot sets
-  const appIdSet = new Set<number>();
-  for (const row of playtimeRows) appIdSet.add(row.appId);
-  for (const row of achievementRows) appIdSet.add(row.appId);
-  const appIds = Array.from(appIdSet);
+  // Names are only needed for the playtime-driven topGames list.
+  const appIds = Array.from(new Set(playtimeRows.map((r) => r.appId)));
 
   const gameRecords = await prisma.game.findMany({
     where: { appId: { in: appIds } },
@@ -58,5 +57,5 @@ export async function getYearInReview(steamId: string, year: number): Promise<Ye
 
   const names = new Map<number, string>(gameRecords.map((g) => [g.appId, g.name]));
 
-  return computeYearInReview(year, playtimeRows, achievementRows, names);
+  return computeYearInReview(year, playtimeRows, unlockRows, names);
 }

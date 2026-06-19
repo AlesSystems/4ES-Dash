@@ -9,6 +9,13 @@ vi.mock('@/components/dashboard/LibraryValueSection', () => ({
   LibraryValueSkeleton: () => null,
 }));
 
+// The achievement summary is likewise an async server component in its own
+// Suspense boundary (#85) — stub it so the dashboard tree renders in jsdom.
+vi.mock('@/components/dashboard/AchievementSummarySection', () => ({
+  AchievementSummarySection: () => null,
+  AchievementSummarySkeleton: () => null,
+}));
+
 // When the cache serves stale data (its SWR path is unit-tested in cache.test.ts),
 // getProfile reports `stale: true`; assert the homepage surfaces the indicator.
 vi.mock('@/server/repositories/profile', () => ({

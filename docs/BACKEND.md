@@ -58,6 +58,15 @@ Rate limit notes for the Store API:
 > Cache keys stay `steam:<endpoint>:<steamId>[:<appid>]`, so two SteamIDs are
 > cache-isolated (proven by `tests/unit/repositories-isolation.test.ts`).
 
+> **Onboarding gate (Phase 7, #90).** A signed-in user is not "ready" until
+> `runOnboardingBackfill` has run and set `User.onboardedAt`. Protected "my"
+> views must distinguish *not provisioned yet* from *genuinely empty* before
+> rendering an empty state. `server/onboarding-gate.ts#getOnboardingStatus()`
+> returns `'no-session' | 'not-onboarded' | 'onboarded'` from a single
+> `User.onboardedAt` read — it does **not** trigger a backfill (no Steam fan-out
+> on the render path). Pages redirect a `'not-onboarded'` viewer to
+> `/onboarding`; reserve empty states for `'onboarded'` viewers with no rows.
+
 The following endpoints are Zod-parsed, rate-limited, and cached via `server/repositories/*`:
 
 | Function (`lib/steam`)              | Steam endpoint                              | Repository                          | TTL (`ttl.ts`)        |
@@ -133,7 +142,19 @@ Two new Prisma models added in migration `prisma/migrations/20260617101604_phase
 - Keys are lowercase, colon-separated, namespaced: `steam:owned-games:76561198000000000`.
 - TTLs come from a single map in `server/cache/ttl.ts`. Don't sprinkle magic numbers.
 - Stale-while-revalidate: a fetch that throws after retries returns the previous value if one exists, with a `stale: true` flag the UI can show.
+- **Single-flight (#85):** N concurrent misses on the same key collapse onto ONE loader invocation (an `inFlight` promise map). Joiners await the leader's result; SWR is preserved (a failed shared load returns the prior value as `stale`, or rethrows when there is no prior value). `clearCache()` resets both the store and the in-flight map.
 - Invalidation on writes uses `revalidateTag` for RSC and explicit `cache.del(key)` for the API.
+
+### Rate limiters (#85)
+
+`lib/steam/limiter.ts` exports two **separate** token buckets (1 req / 250 ms each):
+
+- `steamLimiter` — the Steam Web API (`api.steampowered.com`).
+- `storeLimiter` — the undocumented Store API (`store.steampowered.com`), a different host. Keeping them separate means a flood of store-price calls (e.g. the nightly library-value pass over the whole library) never starves a Web API `acquire()` on the interactive request path.
+
+### Pre-computed library value (#85)
+
+Pricing every owned game is O(N) rate-limited Store calls. Doing it on the dashboard render made cold loads scale with library size. Now the **nightly job** calls `refreshLibraryValueAggregate(steamId, games)` (off the request path) which prices the library via `storeLimiter` and upserts a single `LibraryValueAggregate` row. The dashboard's `getLibraryValue(steamId)` only **reads** that row — its Steam fan-out is zero and independent of N. Before the first nightly run the row is absent → `getLibraryValue` returns `unavailable('not-tracked')` and the UI shows a designed "value pending" state (never a synchronous live fan-out, never a fabricated $0). The dashboard's library-value and achievement-summary sections each stream in their own `<Suspense>` boundary so neither blocks first paint.
 
 ## Database
 
@@ -159,6 +180,7 @@ Two new Prisma models added in migration `prisma/migrations/20260617101604_phase
 - Jobs are idempotent — re-running the same day's snapshot must not create dupes (compound unique on `(steamId, appId, date)`).
 - `playtimeForever` is monotonic: a reported decrease is clamped up to the latest prior value and logged.
 - Each run writes a `JobRun` row (`running` → `ok`/`error`) with a JSON payload for observability.
+- The nightly run also (a) records per-achievement **unlock events** (`AchievementUnlock`) for all achievement-bearing games via the cached achievement repository, so Year-in-Review counts by real `unlockedAt` (#91) and unlocks outside the most-played set still count, and (b) refreshes the **library-value aggregate** (`LibraryValueAggregate`) so the dashboard reads one row instead of pricing live (#85). Both are per-game fan-outs that belong in the job, never on the request path; both are best-effort (a failure in either is logged and never fails the snapshot).
 
 ## Validation
 

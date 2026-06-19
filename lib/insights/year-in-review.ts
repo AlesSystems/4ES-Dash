@@ -26,6 +26,14 @@ export interface YearAchievementRow {
   unlockedCount: number;
 }
 
+/** A persisted achievement unlock event row (AchievementUnlock table). */
+export interface AchievementUnlockRow {
+  steamId: string;
+  appId: number;
+  apiName: string;
+  unlockedAt: Date;
+}
+
 /** One entry in the top-games list. */
 export interface TopGame {
   appId: number;
@@ -42,6 +50,32 @@ export interface YearInReview {
   topGames: TopGame[];
   /** Sum of per-game (max − min) achievement-count deltas within the year, each ≥0. */
   achievementsUnlocked: number;
+}
+
+// ---------------------------------------------------------------------------
+// countUnlocksInYear
+// ---------------------------------------------------------------------------
+
+/**
+ * Counts AchievementUnlock rows whose unlockedAt UTC year === year.
+ *
+ * - Does NOT restrict to any top-N set of games.
+ * - Rows with unlocktime 0 are already excluded upstream (stored as null and
+ *   never inserted into AchievementUnlock); this function adds a defensive
+ *   guard: any row with getUTCFullYear() === 1970 is excluded.
+ * - seconds-vs-ms: the caller is responsible for passing Date objects already
+ *   converted from unix seconds × 1000. This function operates on Date values
+ *   only, making it pure and easy to test.
+ */
+export function countUnlocksInYear(rows: AchievementUnlockRow[], year: number): number {
+  let count = 0;
+  for (const row of rows) {
+    const y = row.unlockedAt.getUTCFullYear();
+    // Guard: exclude any row that maps to epoch (unlocktime 0 guard)
+    if (y === 1970) continue;
+    if (y === year) count += 1;
+  }
+  return count;
 }
 
 // ---------------------------------------------------------------------------
@@ -97,19 +131,22 @@ export function availableYears(rows: { date: Date }[]): number[] {
 /**
  * Computes the Year in Review for a single UTC calendar year.
  *
- * @param year            The UTC year to summarise (e.g. 2025).
- * @param playtimeRows    All playtime snapshot rows (any years — filtered internally).
- * @param achievementRows All achievement snapshot rows (any years — filtered internally).
- * @param names           Map of appId → display name. Falls back to `"App {appId}"`.
+ * @param year                  The UTC year to summarise (e.g. 2025).
+ * @param playtimeRows          All playtime snapshot rows (any years — filtered internally).
+ * @param achievementUnlockRows All achievement UNLOCK EVENT rows (any years —
+ *   filtered internally). achievementsUnlocked is counted from these by real
+ *   `unlockedAt` UTC year (#91), NOT from a cumulative-snapshot delta, so the
+ *   count is correct with a single day of data and no snapshot history, and an
+ *   unlock in a game outside the top-played set still contributes.
+ * @param names                 Map of appId → display name. Falls back to `"App {appId}"`.
  */
 export function computeYearInReview(
   year: number,
   playtimeRows: YearPlaytimeRow[],
-  achievementRows: YearAchievementRow[],
+  achievementUnlockRows: AchievementUnlockRow[],
   names: Map<number, string>,
 ): YearInReview {
   const playtimeDeltas = deltasByApp(playtimeRows, year, (r) => r.playtimeForever);
-  const achievementDeltas = deltasByApp(achievementRows, year, (r) => r.unlockedCount);
 
   // Total playtime = sum of all per-game deltas.
   let totalMinutes = 0;
@@ -131,11 +168,8 @@ export function computeYearInReview(
       minutesDelta,
     }));
 
-  // Total achievements = sum of all per-game achievement deltas.
-  let achievementsUnlocked = 0;
-  for (const delta of achievementDeltas.values()) {
-    achievementsUnlocked += delta;
-  }
+  // Total achievements = count of unlock events whose unlockedAt UTC year === year.
+  const achievementsUnlocked = countUnlocksInYear(achievementUnlockRows, year);
 
   return { year, totalMinutes, topGames, achievementsUnlocked };
 }

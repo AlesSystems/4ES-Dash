@@ -6,8 +6,10 @@
  * breakdown visually. Unknown-count note surfaces when >0 games have no metadata.
  */
 
+import { redirect } from 'next/navigation';
 import { getGenreBreakdown } from '@/server/repositories/insights/genres';
 import { getViewerSteamId } from '@/server/auth';
+import { getOnboardingStatus } from '@/server/onboarding-gate';
 import { EmptyState } from '@/components/states/EmptyState';
 import { StaleBanner } from '@/components/states/StaleBanner';
 import { GenreChart } from '@/components/insights/GenreChart';
@@ -25,6 +27,16 @@ export const dynamic = 'force-dynamic';
 const SHELL = 'px-4 py-8 sm:px-6 lg:px-10';
 
 export default async function GenresPage() {
+  // Gate on onboarding: a signed-in user who has never run the backfill has no
+  // ownedGame rows yet. Showing them "No genre data yet" is misleading — send
+  // them to /onboarding instead. "No genre data yet" is reserved for an
+  // onboarded user with a genuinely empty library. The gate is a cheap single-
+  // column read; it never triggers Steam fan-out on the render path (#90).
+  const onboarding = await getOnboardingStatus();
+  if (onboarding === 'not-onboarded') {
+    redirect('/onboarding');
+  }
+
   const viewerId = await getViewerSteamId();
   const { genres, tags, stale, unknownFromUnavailable } = await getGenreBreakdown(viewerId);
 

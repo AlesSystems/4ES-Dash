@@ -16,6 +16,7 @@
 import { prisma } from '@/server/db';
 import { getProfile } from '@/server/repositories/profile';
 import { getGameAchievements } from '@/server/repositories/achievements';
+import { refreshLibraryValueAggregate } from '@/server/repositories/library-value';
 import { getEnv } from '@/server/env';
 import { topGamesByPlaytime } from '@/lib/games/select';
 import type { OwnedGame } from '@/lib/steam/schemas';
@@ -143,6 +144,26 @@ export async function runSnapshot(): Promise<SnapshotResult> {
 
     const achievementRowsInserted = await snapshotAchievements(steamId, games, dayKey);
 
+    // Record per-achievement unlock EVENTS for ALL achievement-bearing games
+    // (#91) so unlocks outside the top-N-played set still count in Year-in-Review.
+    // Off the request path; getGameAchievements is cached so the games already
+    // fetched above are not re-fetched. Best-effort: never fails the snapshot.
+    try {
+      await recordAchievementUnlocks(steamId, games);
+    } catch (err) {
+      console.error('[snapshot] achievement unlock recording failed steamId=%s', steamId, err);
+    }
+
+    // Pre-compute the library-value aggregate OFF the request path (#85) so the
+    // dashboard reads a single row instead of pricing every game live. The Store
+    // pricing fan-out uses the dedicated storeLimiter, so it never starves the
+    // Web API limiter. Best-effort: a pricing hiccup must not fail the snapshot.
+    try {
+      await refreshLibraryValueAggregate(steamId, games);
+    } catch (err) {
+      console.error('[snapshot] library-value aggregate refresh failed steamId=%s', steamId, err);
+    }
+
     const result: SnapshotResult = {
       steamId,
       date: dayKey.toISOString().slice(0, 10),
@@ -182,10 +203,13 @@ async function prismaPriorMax(steamId: string, dayKey: Date): Promise<Map<number
 }
 
 /**
- * Best-effort achievement-count snapshot for the most-played achievement games.
- * Bounded to {@link ACHIEVEMENT_SNAPSHOT_LIMIT} because each game costs
- * rate-limited Steam calls. Games whose achievement data is unavailable
- * (private / none) are silently skipped — never throws.
+ * Best-effort cumulative achievement-COUNT snapshot for the most-played
+ * achievement games. Bounded to {@link ACHIEVEMENT_SNAPSHOT_LIMIT} because each
+ * game costs rate-limited Steam calls. Games whose achievement data is
+ * unavailable (private / none) are silently skipped — never throws.
+ *
+ * Per-achievement unlock EVENTS (#91) are recorded separately by
+ * {@link recordAchievementUnlocks} (over ALL achievement-bearing games), not here.
  */
 async function snapshotAchievements(
   steamId: string,
@@ -209,4 +233,76 @@ async function snapshotAchievements(
     written += 1;
   }
   return written;
+}
+
+/** Minimal per-achievement shape needed to record an unlock event. */
+interface UnlockItem {
+  apiName: string;
+  unlocked: boolean;
+  /** ISO-8601 UTC string; null when locked or Steam reports unlocktime 0. */
+  unlockedAt: string | null;
+}
+
+/**
+ * Upserts AchievementUnlock rows for the unlocked achievements of one game,
+ * keyed by the real unlock time. Achievements that are locked or have an
+ * unknown unlock time (`unlockedAt === null`, i.e. Steam's unlocktime 0) are
+ * skipped — never stored as a 1970 epoch. Idempotent: the row is immutable
+ * once written (compound PK `(steamId, appId, apiName)`, empty `update`).
+ * Returns the number of unlock rows seen (created or already present).
+ */
+async function upsertUnlockEvents(
+  steamId: string,
+  appId: number,
+  items: UnlockItem[],
+): Promise<number> {
+  let n = 0;
+  for (const item of items) {
+    if (!item.unlocked || item.unlockedAt === null) continue;
+    await prisma.achievementUnlock.upsert({
+      where: { steamId_appId_apiName: { steamId, appId, apiName: item.apiName } },
+      create: { steamId, appId, apiName: item.apiName, unlockedAt: new Date(item.unlockedAt) },
+      update: {}, // a recorded unlock is immutable — idempotent re-run
+    });
+    n += 1;
+  }
+  return n;
+}
+
+/**
+ * Records per-achievement unlock events (#91) for ALL achievement-bearing games
+ * of `steamId`, via the cached, rate-limited achievement repository. Recording
+ * EVERY such game (not just the top-N played) is what makes criterion #6 hold —
+ * an unlock in a game outside the most-played set still counts in Year-in-Review.
+ * This per-game fan-out is deliberately in the nightly JOB / onboarding flow,
+ * never on an interactive request path (architecture: heavy work lives in jobs);
+ * `getGameAchievements` is cached + single-flight, so games already fetched for
+ * the cumulative-count pass are not re-fetched. Used by the onboarding backfill
+ * too, so a brand-new user's EXISTING unlocks (and prior years) populate
+ * immediately, attributed by their real `unlockedAt`. Unavailable games are
+ * skipped; a single game's failure does not abort the rest. Returns the number
+ * of unlock rows recorded.
+ */
+export async function recordAchievementUnlocks(
+  steamId: string,
+  games: OwnedGame[],
+): Promise<number> {
+  const candidates = games.filter((g) => g.hasAchievements);
+
+  let total = 0;
+  for (const game of candidates) {
+    try {
+      const result = await getGameAchievements(steamId, game.appId);
+      if (!result.available) continue;
+      total += await upsertUnlockEvents(steamId, game.appId, result.data.items);
+    } catch (err) {
+      console.error(
+        '[snapshot] unlock recording failed steamId=%s appId=%d',
+        steamId,
+        game.appId,
+        err,
+      );
+    }
+  }
+  return total;
 }

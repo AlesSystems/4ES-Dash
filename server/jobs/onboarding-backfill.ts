@@ -22,7 +22,7 @@ import { prisma } from '@/server/db';
 import { getProfile } from '@/server/repositories/profile';
 import { requireSteamId } from '@/server/repositories/require-steam-id';
 import { isSteamApiError } from '@/lib/steam/errors';
-import { utcDayKey, clampPlaytime } from '@/server/jobs/snapshot';
+import { utcDayKey, clampPlaytime, recordAchievementUnlocks } from '@/server/jobs/snapshot';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -168,6 +168,17 @@ export async function runOnboardingBackfill(
       create: { steamId: id, appId: game.appId, date: dayKey, playtimeForever: value },
       update: {}, // immutable once written — idempotent re-run
     });
+  }
+
+  // ------------------------------------------------------------------
+  // Seed per-achievement unlock events (#91) so prior years populate
+  // retroactively from the user's existing unlocks, attributed by their real
+  // unlockedAt. Best-effort: failures here never block onboarding completion.
+  // ------------------------------------------------------------------
+  try {
+    await recordAchievementUnlocks(id, games);
+  } catch (err) {
+    console.error('[onboarding-backfill] achievement unlock seeding failed for steamId=%s', id, err);
   }
 
   // ------------------------------------------------------------------

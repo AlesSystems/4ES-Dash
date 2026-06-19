@@ -85,6 +85,15 @@ export class TokenBucketLimiter {
 export const steamLimiter = new TokenBucketLimiter(1, REFILL_INTERVAL_MS);
 
 /**
+ * Dedicated limiter for the undocumented Store API (`store.steampowered.com`),
+ * a DIFFERENT host from the Steam Web API (`api.steampowered.com`). Keeping it
+ * separate (#85) means a flood of store-price calls — e.g. the nightly
+ * library-value pass over the whole library — never starves a Web API
+ * `acquire()` on the interactive request path. Same 1 req / 250 ms budget.
+ */
+export const storeLimiter = new TokenBucketLimiter(1, REFILL_INTERVAL_MS);
+
+/**
  * Dedicated limiter for SteamSpy's appdetails endpoint, which asks for
  * ≤ 1 req/sec — slower than the Steam Web API. The shared `steamLimiter`
  * (4 req/sec) would not honour SteamSpy's policy, so SteamSpy calls use this.

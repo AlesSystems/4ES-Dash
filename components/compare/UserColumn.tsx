@@ -9,12 +9,21 @@ export interface UserColumnProps {
 }
 
 /**
+ * Returns a friendly display name for a side when the Steam profile is unavailable.
+ * Never returns a raw 17-digit SteamID — that is never a useful name for a user.
+ */
+function friendlyFallbackName(steamId: string): string {
+  return `Player ${steamId.slice(-4)}`;
+}
+
+/**
  * One column in the CompareHeader: avatar, persona name, and library stats.
  * Degrades gracefully when the profile is null or the library is private.
  */
 export function UserColumn({ side, align = 'left' }: UserColumnProps): JSX.Element {
   const { profile, steamId, gamesCount, totalMinutes, isPrivate } = side;
-  const displayName = profile?.personaName ?? steamId;
+  // Friendly fallback: never render a raw 17-digit steamId as a display name.
+  const displayName = profile?.personaName ?? friendlyFallbackName(steamId);
   const avatarUrl = profile?.avatar.full ?? null;
 
   const alignClass = align === 'right' ? 'items-end text-right' : 'items-start text-left';

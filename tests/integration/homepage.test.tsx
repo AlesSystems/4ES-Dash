@@ -11,6 +11,14 @@ vi.mock('@/components/dashboard/LibraryValueSection', () => ({
   LibraryValueSkeleton: () => null,
 }));
 
+// The achievement summary is likewise an async server component streaming in its
+// own Suspense boundary (#85) — stub it; its data logic is covered by the
+// achievements repository tests and AchievementSummary's own component tests.
+vi.mock('@/components/dashboard/AchievementSummarySection', () => ({
+  AchievementSummarySection: () => null,
+  AchievementSummarySkeleton: () => null,
+}));
+
 import HomePage from '@/app/page';
 import { clearCache } from '@/server/cache';
 import { steamServer } from '../mocks/steam-server';
@@ -32,8 +40,9 @@ describe('HomePage', () => {
     // Recently-played widget + most-played (top games) section both render.
     expect(screen.getByRole('heading', { name: /recently played/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /most played/i })).toBeInTheDocument();
-    // Achievement aggregate resolved (not the unavailable empty state).
-    expect(screen.getByText(/achievement completion/i)).toBeInTheDocument();
+    // The achievement summary now streams in its own Suspense boundary (#85) and
+    // is stubbed above (it's an async server component); its behaviour is covered
+    // by the achievements repository + AchievementSummary component tests.
     // The 2-game fixture appears in the most-played ranking.
     expect(screen.getAllByText('Counter-Strike 2').length).toBeGreaterThanOrEqual(1);
   });

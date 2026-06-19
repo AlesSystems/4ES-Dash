@@ -21,6 +21,10 @@ Rules:
 | ERR-0004 | 2026-06-16 | db | Low | Prisma 7 breaking changes + SQLite-migrations can't replay on Postgres (`migrate deploy` acceptance) | Won't-fix |
 | ERR-0005 | 2026-06-16 | jobs | Medium | `createMany({ skipDuplicates })` unsupported on SQLite — snapshot idempotency needed a different write | Fixed |
 | ERR-0006 | 2026-06-17 | frontend | Low | Async server component inside the dashboard tree broke `@testing-library` jsdom render | Fixed |
+| ERR-0007 | 2026-06-18 | frontend | Medium | `/compare` side A defaulted to the placeholder `STEAM_ID`, breaking shared games and rendering a raw SteamID as a name | Fixed |
+| ERR-0008 | 2026-06-18 | frontend | Medium | Genre breakdown showed "No genre data yet" for a signed-in-but-not-onboarded user until a manual re-sync | Fixed |
+| ERR-0009 | 2026-06-18 | jobs | Medium | Year-in-Review "achievements unlocked" was always 0 — counted as a cumulative-snapshot delta with ≤1 snapshot/year | Fixed |
+| ERR-0010 | 2026-06-19 | frontend | High | Dashboard cold load scaled O(N games) — library value priced every game live behind the shared limiter; no cache single-flight | Fixed |
 
 **Allowed values**
 
@@ -185,6 +189,90 @@ Copy this block when adding a new entry. Replace every placeholder including the
 **Where else this assumption may be wrong:** Any future page that composes an inline `async` child and is also unit-tested — e.g. streaming friends-activity, achievements timelines, or year-in-review sections. The same extraction pattern applies.
 
 **Prevented by:** A convention (now in docs/FRONTEND.md): async server components used by a tested page live in their own file. Caught here by the orchestrator's full-suite gate, which the parallel sub-agents' per-file test runs did not exercise.
+
+---
+
+### ERR-0007 — `/compare` side A defaulted to the placeholder `STEAM_ID`
+
+**Date:** 2026-06-18
+**Module:** frontend
+**Severity:** Medium
+**Status:** Fixed
+
+**Symptom:** Opening `/compare?b=<valid>` while signed in rendered "Shared games can't be computed — one of the libraries couldn't be loaded. Try again shortly." (#88) and, where a profile was missing, displayed a raw 17-digit SteamID as the player's name (#89).
+
+**Root cause:** `app/compare/page.tsx` defaulted side A to `getEnv().STEAM_ID`, which in every non-featured deployment is the placeholder `76561190000000000` (a non-existent account). Every Steam fetch for it failed → `games = null` → `shared = null` → the "Try again shortly" branch; `profile = null` → the display fell back to `profile?.personaName ?? steamId`, rendering the raw id. The page was missed in the Phase 6 (#81) session migration.
+
+**Fix:** Side A now resolves from the session via `getSessionUser()` (NOT `getViewerSteamId()`, which itself falls back to `env.STEAM_ID`); anonymous visitors with no `?a=` get the input `EmptyState` instead of a placeholder fetch (`app/compare/page.tsx`). A `friendlyName(steamId)` / `friendlyFallbackName(steamId)` helper replaces the raw-id fallback in both `app/compare/page.tsx` and `components/compare/UserColumn.tsx`, so a name never matches `/^\d{17}$/`.
+
+**Generalized rule:** A "current user" default must come from the authenticated session, never from a config placeholder that doubles as a featured/dev fallback — a placeholder that passes shape validation (a 17-digit string) silently fetches a dead account. And a raw identifier is never a display name: every name fallback must degrade to a human-readable token.
+
+**Where else this assumption may be wrong:** Any other route that resolved "my" data via `getEnv().STEAM_ID` or `getViewerSteamId()`'s env fallback (audited: dashboard self-gates; genres uses the gate in ERR-0008); any UI that renders `profile?.personaName ?? steamId` (e.g. `/u/[steamId]`, friends columns).
+
+**Prevented by:** A compare page + UserColumn test asserting the session id drives side A, that the placeholder is never fetched and never appears in output, and that a null profile never renders a 17-digit name. The regression test sets `STEAM_ID` to the placeholder explicitly.
+
+---
+
+### ERR-0008 — Genre breakdown empty until a manual re-sync (onboarding not gated)
+
+**Date:** 2026-06-18
+**Module:** frontend
+**Severity:** Medium
+**Status:** Fixed
+
+**Symptom:** A user who signed in but never visited `/onboarding` saw "No genre data yet" on `/insights/genres` until they triggered a settings re-sync, even though sign-in succeeded.
+
+**Root cause:** `ownedGame` rows are written only by `runOnboardingBackfill` (via `/onboarding` or settings re-sync). The auth `signIn` event upserts a bare `User` row (`lastLoginAt` only) and does NOT backfill, and nothing gated a signed-in-but-not-onboarded user toward `/onboarding`. So `/insights/genres`, which derives slices from `prisma.ownedGame.findMany`, rendered the empty state for a user whose library simply had not been synced yet.
+
+**Fix:** Added `server/onboarding-gate.ts#getOnboardingStatus()` — a cheap single-column read of `User.onboardedAt` returning `'no-session' | 'not-onboarded' | 'onboarded'`. `app/insights/genres/page.tsx` redirects a `'not-onboarded'` viewer to `/onboarding`; "No genre data yet" is now reachable only for an onboarded user with a genuinely empty library. The gate never calls `runOnboardingBackfill` (no Steam fan-out on the render path).
+
+**Generalized rule:** Distinguish "data not provisioned yet" from "data genuinely empty." A protected "my" view must gate on the provisioning signal (`onboardedAt`) before showing an empty state, and the gate must stay off the rate-limited request path (DB read only, never a live backfill).
+
+**Where else this assumption may be wrong:** Every other onboarding-dependent "my" view that reads `ownedGame`/snapshot tables directly (history, year in review, library, insights/*). Each should consult `getOnboardingStatus()` rather than inferring "empty" from zero rows.
+
+**Prevented by:** A genres-page test covering all three states (not-onboarded → redirect; onboarded+data → slices; onboarded+empty → empty state) plus the gate's own unit tests; the empty-state copy is asserted to appear only on the onboarded-empty path.
+
+---
+
+### ERR-0009 — Year-in-Review "achievements unlocked" stuck at 0
+
+**Date:** 2026-06-18
+**Module:** jobs
+**Severity:** Medium
+**Status:** Fixed
+
+**Symptom:** The Year-in-Review page reported "0 achievements unlocked" for a year even when the user had clearly unlocked achievements (and the dashboard's live achievement summary, counting the same data, was non-zero — the two surfaces disagreed).
+
+**Root cause:** `achievementsUnlocked` was computed as `max(unlockedCount) − min(unlockedCount)` among the year's `AchievementSnapshot` rows. With ≤1 snapshot in the year — the common case, since onboarding seeds no achievement baseline and only the top-20 games are snapshotted — the delta is 0. The real per-achievement `unlockedAt` (parsed in `lib/steam/achievements.ts` as unix seconds × 1000) was discarded by the job. The existing test never asserted a non-zero count, so CI missed it.
+
+**Fix:** New `AchievementUnlock` event table (one new migration `20260618233552_add_achievement_unlocks`) recording one row per unlocked achievement keyed by its real `unlockedAt`. `server/jobs/snapshot.ts#recordAchievementUnlocks` writes these for ALL achievement-bearing games (not just the top-N-played, so unlocks outside the most-played set still count — criterion #6) via the cached, single-flighted achievement repository, so games already fetched for the cumulative-count pass are not re-fetched; `server/jobs/onboarding-backfill.ts` seeds them on first run so prior years populate retroactively. `lib/insights/year-in-review.ts#countUnlocksInYear` counts events by UTC year (seconds→ms guarded, `unlocktime 0`/epoch excluded), and `server/repositories/insights/year-in-review.ts` feeds it the unlock rows instead of the snapshot delta.
+
+**Generalized rule:** To count *occurrences within a window*, store and count the events (timestamped), never a delta of a cumulative counter — a delta needs ≥2 samples bracketing the window and silently returns 0 when the history is sparse. And every "count > 0" requirement needs a test that asserts a *non-zero* result, not just shape.
+
+**Where else this assumption may be wrong:** Any other "in this period" metric derived from snapshot deltas — e.g. playtime-gained for a year/month with a single snapshot (the playtime delta has the same ≤1-sample blind spot, mitigated only because playtime is snapshotted daily for all games).
+
+**Prevented by:** Tests asserting a non-zero, history-independent count (single day of data → count > 0), UTC year-boundary cases both directions, the seconds→ms conversion, exclusion of `unlocktime 0`, contribution from games outside the top-played set, and a sum-over-years cross-check.
+
+---
+
+### ERR-0010 — Dashboard cold load scaled with library size (O(N) live Store pricing)
+
+**Date:** 2026-06-19
+**Module:** frontend
+**Severity:** High
+**Status:** Fixed
+
+**Symptom:** The dashboard's cold (cache-empty) render got slower the larger the library — seconds-to-tens-of-seconds — because rendering it priced every owned game live. (Closes the open item flagged in ERR-0003, which only bounded the achievement fan-out.)
+
+**Root cause:** `server/repositories/library-value.ts#getLibraryValue` priced the whole library via `Promise.all(games.map(getGameStorePrice))`, all serialized behind the **shared** 250 ms limiter (cold = `N × 250 ms`); the achievement summary was awaited inside `app/page.tsx`'s blocking `Promise.all` rather than streamed; the Store and Web APIs shared one limiter; and `server/cache.ts` had no in-flight de-dup, so concurrent misses each ran the loader.
+
+**Fix:** (1) Pre-compute the library value in the nightly job (`refreshLibraryValueAggregate` → `LibraryValueAggregate` row, one new migration); the dashboard READS the row (`getLibraryValue` → `Availability<LibraryValue>`, `unavailable('not-tracked')` before the first run → "value pending" state) with zero Store fan-out. (2) Both the library-value and achievement-summary sections stream in their own `<Suspense>` boundary (`LibraryValueSection`, `AchievementSummarySection`), resolved with a `steamId` passed once from the page so neither re-runs `getViewerSteamId`/`getProfile`. (3) A dedicated `storeLimiter` separates Store calls from the Web API limiter. (4) `cache()` single-flights concurrent misses.
+
+**Generalized rule:** Never put an O(N-resource) rate-limited fan-out on an interactive render path — precompute it in a job and read an aggregate, and stream secondary widgets behind `<Suspense>`. Independent upstreams need independent rate limiters, and a read-through cache must single-flight to avoid a thundering herd on a cold key.
+
+**Where else this assumption may be wrong:** Any page that aggregates a per-game/per-resource Steam call on render (genres, multiplayer, cost-per-hour). Each should read a precomputed aggregate or run behind Suspense with a bounded fan-out, never a synchronous library-wide loop.
+
+**Prevented by:** A test asserting `getLibraryValue` performs zero `getGameStorePrice` calls (reads the aggregate), a cache single-flight test (N misses → 1 loader call), and a store-limiter separation test (a store flood does not delay a Web API acquire).
 
 ---
 
