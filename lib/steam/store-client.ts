@@ -14,7 +14,7 @@
 
 import { z } from 'zod';
 import { available, unavailable, type Availability } from '@/lib/result';
-import { steamLimiter } from './limiter';
+import { storeLimiter } from './limiter';
 
 // ---------------------------------------------------------------------------
 // Domain types (exported for consumers)
@@ -147,7 +147,7 @@ async function fetchEntry(
   const params = `appids=${appId}&l=english&cc=us${extraParams !== undefined ? `&${extraParams}` : ''}`;
   const url = `${STORE_BASE_URL}?${params}`;
 
-  await steamLimiter.acquire();
+  await storeLimiter.acquire();
 
   let raw: unknown;
   try {

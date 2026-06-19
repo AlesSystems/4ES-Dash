@@ -3,8 +3,9 @@
  *
  * This is the Phase 0 implementation (no Redis dependency). The public API
  * is identical to what a Redis-backed implementation would expose, so swapping
- * it in production is a one-file change. Known limitation: concurrent misses on
- * the same key each run the loader (no in-flight de-dup yet — fine for dev).
+ * it in production is a one-file change. Concurrent misses on the same key are
+ * de-duplicated (single-flight, #85): N simultaneous misses run the loader
+ * exactly once and all share the result.
  *
  * Public surface:
  *   cache<T>(key, ttlSeconds, loader) → Promise<{ value: T; stale: boolean }>
@@ -30,9 +31,14 @@ const MAX_ENTRIES = 500;
 // We use `unknown` here because the store holds heterogeneous types.
 const store = new Map<string, Entry<unknown>>();
 
+// In-flight loader promises, keyed by cache key. Lets concurrent misses on the
+// same key collapse onto a single loader invocation (single-flight, #85).
+const inFlight = new Map<string, Promise<unknown>>();
+
 /** Remove all entries — use in tests (beforeEach) or on hot-reload. */
 export function clearCache(): void {
   store.clear();
+  inFlight.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -84,9 +90,28 @@ export async function cache<T>(
     return { value: existing.value, stale: false };
   }
 
-  // Cache miss or expired — call loader
+  // Single-flight: if a loader for this key is already running, join it instead
+  // of starting a second one. N concurrent misses → loader runs exactly once.
+  const pending = inFlight.get(key) as Promise<T> | undefined;
+  if (pending !== undefined) {
+    try {
+      const value = await pending;
+      return { value, stale: false };
+    } catch (err) {
+      // The shared loader failed — preserve stale-while-revalidate semantics.
+      if (existing !== undefined) {
+        return { value: existing.value, stale: true };
+      }
+      throw err;
+    }
+  }
+
+  // Cache miss or expired — call loader, registering it as the single in-flight
+  // load for this key so concurrent callers can join it.
+  const promise = loader();
+  inFlight.set(key, promise);
   try {
-    const value = await loader();
+    const value = await promise;
     const entry: Entry<T> = {
       value,
       expiresAt: now + ttlSeconds * 1000,
@@ -106,5 +131,7 @@ export async function cache<T>(
     }
     // No prior value — propagate
     throw err;
+  } finally {
+    inFlight.delete(key);
   }
 }

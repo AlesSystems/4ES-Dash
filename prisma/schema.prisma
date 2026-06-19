@@ -133,6 +133,22 @@ model AchievementUnlock {
   @@index([steamId, unlockedAt])
 }
 
+// Pre-computed library-value aggregate (#85). Pricing every owned game via the
+// Store API is O(N) rate-limited calls; doing it on the dashboard render path
+// made cold loads scale with library size. The nightly job computes this once
+// (off the request path) and the dashboard READS this single row — its Steam
+// fan-out is then bounded and independent of N. A missing row → the UI shows a
+// designed "value pending" state (never a synchronous live fan-out, never $0).
+model LibraryValueAggregate {
+  steamId      String   @id
+  totalMinor   Int // sum of finalCents across priced games
+  currency     String // ISO code from the first priced game; '' if none priced
+  pricedCount  Int
+  freeCount    Int
+  missingCount Int // games whose Store price was unavailable at compute time
+  computedAt   DateTime @default(now())
+}
+
 // ─── Manual / enrichment data (Phase 4) ────────────────────────────────────
 
 // User-supplied data Steam never exposes (price paid, acquisition date) — see

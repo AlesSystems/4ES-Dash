@@ -16,6 +16,7 @@
 import { prisma } from '@/server/db';
 import { getProfile } from '@/server/repositories/profile';
 import { getGameAchievements } from '@/server/repositories/achievements';
+import { refreshLibraryValueAggregate } from '@/server/repositories/library-value';
 import { getEnv } from '@/server/env';
 import { topGamesByPlaytime } from '@/lib/games/select';
 import type { OwnedGame } from '@/lib/steam/schemas';
@@ -142,6 +143,16 @@ export async function runSnapshot(): Promise<SnapshotResult> {
     await prisma.$transaction(upserts);
 
     const achievementRowsInserted = await snapshotAchievements(steamId, games, dayKey);
+
+    // Pre-compute the library-value aggregate OFF the request path (#85) so the
+    // dashboard reads a single row instead of pricing every game live. The Store
+    // pricing fan-out uses the dedicated storeLimiter, so it never starves the
+    // Web API limiter. Best-effort: a pricing hiccup must not fail the snapshot.
+    try {
+      await refreshLibraryValueAggregate(steamId, games);
+    } catch (err) {
+      console.error('[snapshot] library-value aggregate refresh failed steamId=%s', steamId, err);
+    }
 
     const result: SnapshotResult = {
       steamId,

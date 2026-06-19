@@ -24,6 +24,7 @@ Rules:
 | ERR-0007 | 2026-06-18 | frontend | Medium | `/compare` side A defaulted to the placeholder `STEAM_ID`, breaking shared games and rendering a raw SteamID as a name | Fixed |
 | ERR-0008 | 2026-06-18 | frontend | Medium | Genre breakdown showed "No genre data yet" for a signed-in-but-not-onboarded user until a manual re-sync | Fixed |
 | ERR-0009 | 2026-06-18 | jobs | Medium | Year-in-Review "achievements unlocked" was always 0 — counted as a cumulative-snapshot delta with ≤1 snapshot/year | Fixed |
+| ERR-0010 | 2026-06-19 | frontend | High | Dashboard cold load scaled O(N games) — library value priced every game live behind the shared limiter; no cache single-flight | Fixed |
 
 **Allowed values**
 
@@ -251,6 +252,27 @@ Copy this block when adding a new entry. Replace every placeholder including the
 **Where else this assumption may be wrong:** Any other "in this period" metric derived from snapshot deltas — e.g. playtime-gained for a year/month with a single snapshot (the playtime delta has the same ≤1-sample blind spot, mitigated only because playtime is snapshotted daily for all games).
 
 **Prevented by:** Tests asserting a non-zero, history-independent count (single day of data → count > 0), UTC year-boundary cases both directions, the seconds→ms conversion, exclusion of `unlocktime 0`, contribution from games outside the top-played set, and a sum-over-years cross-check.
+
+---
+
+### ERR-0010 — Dashboard cold load scaled with library size (O(N) live Store pricing)
+
+**Date:** 2026-06-19
+**Module:** frontend
+**Severity:** High
+**Status:** Fixed
+
+**Symptom:** The dashboard's cold (cache-empty) render got slower the larger the library — seconds-to-tens-of-seconds — because rendering it priced every owned game live. (Closes the open item flagged in ERR-0003, which only bounded the achievement fan-out.)
+
+**Root cause:** `server/repositories/library-value.ts#getLibraryValue` priced the whole library via `Promise.all(games.map(getGameStorePrice))`, all serialized behind the **shared** 250 ms limiter (cold = `N × 250 ms`); the achievement summary was awaited inside `app/page.tsx`'s blocking `Promise.all` rather than streamed; the Store and Web APIs shared one limiter; and `server/cache.ts` had no in-flight de-dup, so concurrent misses each ran the loader.
+
+**Fix:** (1) Pre-compute the library value in the nightly job (`refreshLibraryValueAggregate` → `LibraryValueAggregate` row, one new migration); the dashboard READS the row (`getLibraryValue` → `Availability<LibraryValue>`, `unavailable('not-tracked')` before the first run → "value pending" state) with zero Store fan-out. (2) Both the library-value and achievement-summary sections stream in their own `<Suspense>` boundary (`LibraryValueSection`, `AchievementSummarySection`), resolved with a `steamId` passed once from the page so neither re-runs `getViewerSteamId`/`getProfile`. (3) A dedicated `storeLimiter` separates Store calls from the Web API limiter. (4) `cache()` single-flights concurrent misses.
+
+**Generalized rule:** Never put an O(N-resource) rate-limited fan-out on an interactive render path — precompute it in a job and read an aggregate, and stream secondary widgets behind `<Suspense>`. Independent upstreams need independent rate limiters, and a read-through cache must single-flight to avoid a thundering herd on a cold key.
+
+**Where else this assumption may be wrong:** Any page that aggregates a per-game/per-resource Steam call on render (genres, multiplayer, cost-per-hour). Each should read a precomputed aggregate or run behind Suspense with a bounded fan-out, never a synchronous library-wide loop.
+
+**Prevented by:** A test asserting `getLibraryValue` performs zero `getGameStorePrice` calls (reads the aggregate), a cache single-flight test (N misses → 1 loader call), and a store-limiter separation test (a store flood does not delay a Web API acquire).
 
 ---
 

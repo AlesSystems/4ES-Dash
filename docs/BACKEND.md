@@ -142,7 +142,19 @@ Two new Prisma models added in migration `prisma/migrations/20260617101604_phase
 - Keys are lowercase, colon-separated, namespaced: `steam:owned-games:76561198000000000`.
 - TTLs come from a single map in `server/cache/ttl.ts`. Don't sprinkle magic numbers.
 - Stale-while-revalidate: a fetch that throws after retries returns the previous value if one exists, with a `stale: true` flag the UI can show.
+- **Single-flight (#85):** N concurrent misses on the same key collapse onto ONE loader invocation (an `inFlight` promise map). Joiners await the leader's result; SWR is preserved (a failed shared load returns the prior value as `stale`, or rethrows when there is no prior value). `clearCache()` resets both the store and the in-flight map.
 - Invalidation on writes uses `revalidateTag` for RSC and explicit `cache.del(key)` for the API.
+
+### Rate limiters (#85)
+
+`lib/steam/limiter.ts` exports two **separate** token buckets (1 req / 250 ms each):
+
+- `steamLimiter` — the Steam Web API (`api.steampowered.com`).
+- `storeLimiter` — the undocumented Store API (`store.steampowered.com`), a different host. Keeping them separate means a flood of store-price calls (e.g. the nightly library-value pass over the whole library) never starves a Web API `acquire()` on the interactive request path.
+
+### Pre-computed library value (#85)
+
+Pricing every owned game is O(N) rate-limited Store calls. Doing it on the dashboard render made cold loads scale with library size. Now the **nightly job** calls `refreshLibraryValueAggregate(steamId, games)` (off the request path) which prices the library via `storeLimiter` and upserts a single `LibraryValueAggregate` row. The dashboard's `getLibraryValue(steamId)` only **reads** that row — its Steam fan-out is zero and independent of N. Before the first nightly run the row is absent → `getLibraryValue` returns `unavailable('not-tracked')` and the UI shows a designed "value pending" state (never a synchronous live fan-out, never a fabricated $0). The dashboard's library-value and achievement-summary sections each stream in their own `<Suspense>` boundary so neither blocks first paint.
 
 ## Database
 
@@ -168,6 +180,7 @@ Two new Prisma models added in migration `prisma/migrations/20260617101604_phase
 - Jobs are idempotent — re-running the same day's snapshot must not create dupes (compound unique on `(steamId, appId, date)`).
 - `playtimeForever` is monotonic: a reported decrease is clamped up to the latest prior value and logged.
 - Each run writes a `JobRun` row (`running` → `ok`/`error`) with a JSON payload for observability.
+- The nightly run also (a) records per-achievement **unlock events** (`AchievementUnlock`) from the same bounded achievement fetch — no extra Steam calls — so Year-in-Review counts by real `unlockedAt` (#91), and (b) refreshes the **library-value aggregate** (`LibraryValueAggregate`) so the dashboard reads one row instead of pricing live (#85). Both are best-effort: a failure in either is logged and never fails the snapshot.
 
 ## Validation
 
