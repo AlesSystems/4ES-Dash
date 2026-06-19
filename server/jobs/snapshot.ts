@@ -144,6 +144,16 @@ export async function runSnapshot(): Promise<SnapshotResult> {
 
     const achievementRowsInserted = await snapshotAchievements(steamId, games, dayKey);
 
+    // Record per-achievement unlock EVENTS for ALL achievement-bearing games
+    // (#91) so unlocks outside the top-N-played set still count in Year-in-Review.
+    // Off the request path; getGameAchievements is cached so the games already
+    // fetched above are not re-fetched. Best-effort: never fails the snapshot.
+    try {
+      await recordAchievementUnlocks(steamId, games);
+    } catch (err) {
+      console.error('[snapshot] achievement unlock recording failed steamId=%s', steamId, err);
+    }
+
     // Pre-compute the library-value aggregate OFF the request path (#85) so the
     // dashboard reads a single row instead of pricing every game live. The Store
     // pricing fan-out uses the dedicated storeLimiter, so it never starves the
@@ -221,8 +231,6 @@ async function snapshotAchievements(
       create: { steamId, appId: game.appId, date: dayKey, unlockedCount: result.data.unlocked },
       update: {},
     });
-    // Record real unlock events from the same fetch (no extra Steam call).
-    await upsertUnlockEvents(steamId, game.appId, result.data.items);
     written += 1;
   }
   return written;
@@ -263,28 +271,39 @@ async function upsertUnlockEvents(
 }
 
 /**
- * Records per-achievement unlock events (#91) for the most-played achievement
- * games of `steamId`, fetching the bounded top-N via the cached, rate-limited
- * achievement repository. Used by the onboarding backfill so a brand-new user's
- * EXISTING unlocks (and therefore prior years) populate immediately, attributed
- * by their real `unlockedAt`. Off the interactive request path — call only from
- * jobs / the onboarding flow. Never throws; unavailable games are skipped.
- * Returns the number of unlock rows recorded.
+ * Records per-achievement unlock events (#91) for ALL achievement-bearing games
+ * of `steamId`, via the cached, rate-limited achievement repository. Recording
+ * EVERY such game (not just the top-N played) is what makes criterion #6 hold —
+ * an unlock in a game outside the most-played set still counts in Year-in-Review.
+ * This per-game fan-out is deliberately in the nightly JOB / onboarding flow,
+ * never on an interactive request path (architecture: heavy work lives in jobs);
+ * `getGameAchievements` is cached + single-flight, so games already fetched for
+ * the cumulative-count pass are not re-fetched. Used by the onboarding backfill
+ * too, so a brand-new user's EXISTING unlocks (and prior years) populate
+ * immediately, attributed by their real `unlockedAt`. Unavailable games are
+ * skipped; a single game's failure does not abort the rest. Returns the number
+ * of unlock rows recorded.
  */
 export async function recordAchievementUnlocks(
   steamId: string,
   games: OwnedGame[],
 ): Promise<number> {
-  const candidates = topGamesByPlaytime(
-    games.filter((g) => g.hasAchievements),
-    ACHIEVEMENT_SNAPSHOT_LIMIT,
-  );
+  const candidates = games.filter((g) => g.hasAchievements);
 
   let total = 0;
   for (const game of candidates) {
-    const result = await getGameAchievements(steamId, game.appId);
-    if (!result.available) continue;
-    total += await upsertUnlockEvents(steamId, game.appId, result.data.items);
+    try {
+      const result = await getGameAchievements(steamId, game.appId);
+      if (!result.available) continue;
+      total += await upsertUnlockEvents(steamId, game.appId, result.data.items);
+    } catch (err) {
+      console.error(
+        '[snapshot] unlock recording failed steamId=%s appId=%d',
+        steamId,
+        game.appId,
+        err,
+      );
+    }
   }
   return total;
 }

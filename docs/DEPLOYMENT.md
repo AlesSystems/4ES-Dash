@@ -86,6 +86,12 @@ The fastest path to a live instance. One-click via the **Deploy** button in the
   stay within the free/zero-cost constraint; until then, set `STEAM_ID` to the
   account whose history you want captured. Per-user history still populates on
   demand via the first-login onboarding backfill.
+- **The nightly job does per-game fan-out** (one library-value price + one
+  achievement-unlock pass per game, both rate-limited at 1 req / 250 ms and both
+  best-effort). For a very large library this can run for minutes — fine for a
+  background cron, but on serverless raise the function's `maxDuration` (Vercel
+  Hobby allows up to 60 s, Pro up to 300 s) or the run may be cut short and simply
+  resume on the next night (writes are idempotent, so nothing is corrupted).
 
 ## Docker (planned)
 

@@ -180,7 +180,7 @@ Pricing every owned game is O(N) rate-limited Store calls. Doing it on the dashb
 - Jobs are idempotent — re-running the same day's snapshot must not create dupes (compound unique on `(steamId, appId, date)`).
 - `playtimeForever` is monotonic: a reported decrease is clamped up to the latest prior value and logged.
 - Each run writes a `JobRun` row (`running` → `ok`/`error`) with a JSON payload for observability.
-- The nightly run also (a) records per-achievement **unlock events** (`AchievementUnlock`) from the same bounded achievement fetch — no extra Steam calls — so Year-in-Review counts by real `unlockedAt` (#91), and (b) refreshes the **library-value aggregate** (`LibraryValueAggregate`) so the dashboard reads one row instead of pricing live (#85). Both are best-effort: a failure in either is logged and never fails the snapshot.
+- The nightly run also (a) records per-achievement **unlock events** (`AchievementUnlock`) for all achievement-bearing games via the cached achievement repository, so Year-in-Review counts by real `unlockedAt` (#91) and unlocks outside the most-played set still count, and (b) refreshes the **library-value aggregate** (`LibraryValueAggregate`) so the dashboard reads one row instead of pricing live (#85). Both are per-game fan-outs that belong in the job, never on the request path; both are best-effort (a failure in either is logged and never fails the snapshot).
 
 ## Validation
 
