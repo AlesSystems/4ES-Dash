@@ -27,6 +27,7 @@ Rules:
 | ERR-0010 | 2026-06-19 | frontend | High | Dashboard cold load scaled O(N games) — library value priced every game live behind the shared limiter; no cache single-flight | Fixed |
 | ERR-0011 | 2026-06-19 | frontend | High | Insights pages (genres, cost-per-hour) don't load — O(N) live Store/SteamSpy fan-out on render | Fixed |
 | ERR-0012 | 2026-06-19 | db | High | History page showed fake (seeded) playtime under a real user's account | Fixed |
+| ERR-0013 | 2026-06-19 | api | Critical | Anonymous visitors served the owner's private data in production (homepage + `/api/profile` + `/api/friends`) | Fixed |
 
 **Allowed values**
 
@@ -317,6 +318,27 @@ Copy this block when adding a new entry. Replace every placeholder including the
 **Where else this assumption may be wrong:** Any script that mutates per-user tables keyed off `process.env.STEAM_ID` (other seeds, backfills, one-off migrations). The featured-profile fallback (`getViewerSteamId` → `getEnv().STEAM_ID`) surfaces whatever STEAM_ID points at, so a wrong value shows wrong/empty data on every "my" view when logged out.
 
 **Prevented by:** A test asserting `seed.ts` targets the synthetic ID even when `process.env.STEAM_ID` is set to a different value, plus the production-refusal guard.
+
+---
+
+### ERR-0013 — Anonymous visitors served the owner's private data in production
+
+**Date:** 2026-06-19
+**Module:** api
+**Severity:** Critical
+**Status:** Fixed
+
+**Symptom:** On the deployed Vercel site, a visitor who had not signed in still saw the owner's full dashboard (profile, library, level, playtime) on `/`, and could fetch the owner's data directly from `GET /api/profile` and `GET /api/friends`.
+
+**Root cause:** `getViewerSteamId()` (`server/auth.ts`) fell back to `getEnv().STEAM_ID` for unauthenticated requests. `STEAM_ID` is set to the owner's account on Vercel as a dev/featured-profile fallback. The homepage `/` (self-gating, intentionally outside the middleware matcher) and the public `/api/profile` + `/api/friends` routes (matcher excludes `/api/*`) therefore resolved every anonymous request to the owner's SteamID, so the `if (!featuredId)` Landing gate never fired and the API routes returned the owner's data — a cross-tenant privacy leak. Foreshadowed in ERR-0012's "Where else this assumption may be wrong".
+
+**Fix:** (1) `server/auth.ts` — gate the `STEAM_ID` fallback in `getViewerSteamId()` to non-production (`getEnv().NODE_ENV !== 'production'`); in production an unauthenticated request resolves to `''`, so the homepage renders `<Landing/>`. (2) `app/api/profile/route.ts` and `app/api/friends/route.ts` — read `getSessionUser()` directly and return `401 { error: 'unauthorized' }` (with `Cache-Control: private, no-store`) when there is no session, instead of substituting the fallback identity. Tests in `tests/unit/auth.test.ts`, `tests/integration/api-profile.test.ts`, `tests/integration/api-friends.test.ts` assert anon → 401 / Landing and that the data loaders are never reached.
+
+**Generalized rule:** A "featured/dev fallback" identity must never resolve for an anonymous request in production. Gate such fallbacks on `NODE_ENV`, and make public (non-middleware-protected) API routes return `401` for anonymous callers rather than silently substituting a fallback identity.
+
+**Where else this assumption may be wrong:** Any caller of `getViewerSteamId()` reachable without the auth middleware. The middleware-protected pages (`/library`, `/history`, `/insights/*`, `/friends`, `/game/*`, `/review/*`, `/settings`, `/onboarding`) are safe because anonymous requests are redirected to sign-in before they run; the unprotected surfaces (`/`, `/api/profile`, `/api/friends`) were the leak. Any future public route or API handler that calls `getViewerSteamId()` must explicitly handle the empty-string (anonymous) result.
+
+**Prevented by:** Integration tests that hit each public route unauthenticated and assert no owner data is returned, plus a rule that the middleware matcher and the set of `getViewerSteamId()` callers are reviewed together whenever either changes.
 
 ---
 

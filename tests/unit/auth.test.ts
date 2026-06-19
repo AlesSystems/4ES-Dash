@@ -9,6 +9,10 @@
  *  4. verifySteamOpenId — SECURITY regression: assertion verification enforced.
  *     - is_valid:true  → steamId returned
  *     - is_valid:false → null (forgery rejected)
+ *  5. getViewerSteamId() — production fallback gates (ERR-0013 privacy fix).
+ *     - no session + production + STEAM_ID set → returns '' (no leak)
+ *     - no session + development + STEAM_ID set → returns STEAM_ID (dev fallback)
+ *     - session present → returns session.steamId regardless of NODE_ENV
  *
  * Steam HTTP is intercepted by the MSW server wired in tests/setup.ts.
  * No live calls can slip through (onUnhandledRequest: 'error').
@@ -324,4 +328,109 @@ describe('verifySteamOpenId — security regression', () => {
       expect(steamId).toBeNull();
     },
   );
+});
+
+// ---------------------------------------------------------------------------
+// 6. getViewerSteamId() — production fallback gate (ERR-0013 privacy fix)
+// ---------------------------------------------------------------------------
+//
+// In production, an unauthenticated request must resolve to '' even when
+// STEAM_ID is set (to avoid leaking the owner's account to anonymous visitors).
+// Outside production (development / test), the STEAM_ID fallback is preserved
+// for local dev and featured-profile usage.
+
+describe('getViewerSteamId — production fallback gate', () => {
+  const OWNER_STEAM_ID = '76561198000000042';
+
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns "" in production when there is no session, even when STEAM_ID is set', async () => {
+    vi.doMock('next-auth', () => ({
+      getServerSession: vi.fn().mockResolvedValue(null),
+    }));
+    vi.doMock('@/server/env', () => ({
+      getEnv: vi.fn().mockReturnValue({
+        NODE_ENV: 'production',
+        STEAM_ID: OWNER_STEAM_ID,
+        STEAM_API_KEY: 'k',
+        NEXTAUTH_SECRET: 's',
+        NEXTAUTH_URL: 'https://example.com',
+      }),
+    }));
+
+    const { getViewerSteamId } = await import('@/server/auth');
+    const result = await getViewerSteamId();
+    expect(result).toBe('');
+  });
+
+  it('returns STEAM_ID in development when there is no session and STEAM_ID is set', async () => {
+    vi.doMock('next-auth', () => ({
+      getServerSession: vi.fn().mockResolvedValue(null),
+    }));
+    vi.doMock('@/server/env', () => ({
+      getEnv: vi.fn().mockReturnValue({
+        NODE_ENV: 'development',
+        STEAM_ID: OWNER_STEAM_ID,
+        STEAM_API_KEY: 'k',
+        NEXTAUTH_SECRET: 's',
+        NEXTAUTH_URL: 'http://localhost:3000',
+      }),
+    }));
+
+    const { getViewerSteamId } = await import('@/server/auth');
+    const result = await getViewerSteamId();
+    expect(result).toBe(OWNER_STEAM_ID);
+  });
+
+  it('returns session.steamId in production regardless of STEAM_ID', async () => {
+    const SESSION_STEAM_ID = '76561198111111111';
+    vi.doMock('next-auth', () => ({
+      getServerSession: vi.fn().mockResolvedValue({
+        user: { steamId: SESSION_STEAM_ID, name: 'User', image: 'http://img' },
+        expires: '2099-01-01',
+      }),
+    }));
+    vi.doMock('@/server/env', () => ({
+      getEnv: vi.fn().mockReturnValue({
+        NODE_ENV: 'production',
+        STEAM_ID: OWNER_STEAM_ID,
+        STEAM_API_KEY: 'k',
+        NEXTAUTH_SECRET: 's',
+        NEXTAUTH_URL: 'https://example.com',
+      }),
+    }));
+
+    const { getViewerSteamId } = await import('@/server/auth');
+    const result = await getViewerSteamId();
+    expect(result).toBe(SESSION_STEAM_ID);
+  });
+
+  it('returns session.steamId in development regardless of STEAM_ID', async () => {
+    const SESSION_STEAM_ID = '76561198222222222';
+    vi.doMock('next-auth', () => ({
+      getServerSession: vi.fn().mockResolvedValue({
+        user: { steamId: SESSION_STEAM_ID, name: 'DevUser', image: 'http://img' },
+        expires: '2099-01-01',
+      }),
+    }));
+    vi.doMock('@/server/env', () => ({
+      getEnv: vi.fn().mockReturnValue({
+        NODE_ENV: 'development',
+        STEAM_ID: OWNER_STEAM_ID,
+        STEAM_API_KEY: 'k',
+        NEXTAUTH_SECRET: 's',
+        NEXTAUTH_URL: 'http://localhost:3000',
+      }),
+    }));
+
+    const { getViewerSteamId } = await import('@/server/auth');
+    const result = await getViewerSteamId();
+    expect(result).toBe(SESSION_STEAM_ID);
+  });
 });

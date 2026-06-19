@@ -2,14 +2,25 @@
  * Integration tests for GET /api/friends.
  * Exercises the full stack: route handler → repository → cache → lib/steam/friends.
  * MSW intercepts all Steam HTTP calls — no real network or env secrets needed.
+ *
+ * ERR-0013: anonymous requests must receive 401, not the owner's friends data.
+ * The session mock controls auth state; null → 401, present → 200.
  */
 
 import { http, HttpResponse } from 'msw';
-import { beforeEach, describe, expect, it } from 'vitest';
-import { GET } from '@/app/api/friends/route';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearCache } from '@/server/cache';
 import { FriendsResponse } from '@/lib/zod/api/friends';
 import { steamServer } from '../mocks/steam-server';
+
+// Mock getSessionUser so tests control who (if anyone) is signed in.
+// Default: authenticated with the test STEAM_ID.
+let mockSession: { steamId: string } | null = { steamId: '76561190000000000' };
+vi.mock('@/server/auth', () => ({
+  getSessionUser: () => Promise.resolve(mockSession),
+}));
+
+import { GET } from '@/app/api/friends/route';
 
 const FRIEND_LIST_URL = 'https://api.steampowered.com/ISteamUser/GetFriendList/v0001/';
 const PLAYER_SUMMARIES_URL = 'https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/';
@@ -20,7 +31,49 @@ async function callGET(): Promise<Response> {
 }
 
 // Clear the in-memory cache before each test so values don't bleed across cases.
-beforeEach(() => clearCache());
+// Reset session to authenticated by default.
+beforeEach(() => {
+  clearCache();
+  mockSession = { steamId: '76561190000000000' };
+});
+
+// ---------------------------------------------------------------------------
+// Anonymous access — ERR-0013 privacy fix
+// ---------------------------------------------------------------------------
+
+describe('GET /api/friends – anonymous (unauthenticated)', () => {
+  it('returns 401 with an unauthorized body when there is no session', async () => {
+    mockSession = null;
+
+    const res = await callGET();
+
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body['error']).toBe('unauthorized');
+  });
+
+  it('sets Cache-Control: private, no-store on the 401 response', async () => {
+    mockSession = null;
+
+    const res = await callGET();
+
+    expect(res.status).toBe(401);
+    expect(res.headers.get('cache-control')).toBe('private, no-store');
+  });
+
+  it('does not call getFriends when there is no session', async () => {
+    mockSession = null;
+
+    // If getFriends were called it would hit GetFriendList, which we make
+    // respond with a server error — any 200 would mean the guard was bypassed.
+    steamServer.use(http.get(FRIEND_LIST_URL, () => new HttpResponse(null, { status: 500 })));
+
+    const res = await callGET();
+
+    // Must be 401, not a 500 from Steam, proving getFriends was never reached.
+    expect(res.status).toBe(401);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Happy path

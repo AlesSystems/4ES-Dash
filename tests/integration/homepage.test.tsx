@@ -19,6 +19,20 @@ vi.mock('@/components/dashboard/AchievementSummarySection', () => ({
   AchievementSummarySkeleton: () => null,
 }));
 
+// Control the resolved viewer id without touching env. Defaults to the test
+// SteamID so the existing dashboard tests run authenticated; the anonymous case
+// sets it to '' to exercise the production logged-out path (ERR-0013). We keep
+// every other real export via importActual so the rest of the auth surface is
+// unchanged.
+let mockViewerId = '76561190000000000';
+vi.mock('@/server/auth', async (importActual) => {
+  const actual = await importActual<typeof import('@/server/auth')>();
+  return {
+    ...actual,
+    getViewerSteamId: () => Promise.resolve(mockViewerId),
+  };
+});
+
 import HomePage from '@/app/page';
 import { clearCache } from '@/server/cache';
 import { steamServer } from '../mocks/steam-server';
@@ -32,9 +46,31 @@ async function renderHome(): Promise<void> {
   render(await HomePage());
 }
 
-beforeEach(() => clearCache());
+beforeEach(() => {
+  clearCache();
+  mockViewerId = '76561190000000000';
+});
 
 describe('HomePage', () => {
+  it('renders the logged-out Landing when no viewer resolves (anonymous in production)', async () => {
+    // In production an unauthenticated request resolves to '' (no STEAM_ID
+    // fallback) — the homepage must show Landing, never the owner's dashboard.
+    mockViewerId = '';
+    await renderHome();
+
+    // Landing's headline is present…
+    expect(
+      screen.getByRole('heading', { name: /your steam library/i }),
+    ).toBeInTheDocument();
+    // …and the authenticated dashboard widgets are NOT rendered.
+    expect(
+      screen.queryByRole('heading', { name: /recently played/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: /most played/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it('renders the dashboard widgets and top games on the happy path', async () => {
     await renderHome();
     // Recently-played widget + most-played (top games) section both render.
