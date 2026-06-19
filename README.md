@@ -53,6 +53,26 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Deployment
 
+### Deploy to Vercel
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAlesSystems%2F4ES-Dash&env=STEAM_API_KEY,NEXTAUTH_SECRET,NEXTAUTH_URL,DATABASE_URL,CRON_SECRET&envDescription=Steam%20API%20key%2C%20auth%20secrets%2C%20a%20Postgres%20URL%2C%20and%20a%20cron%20secret&envLink=https%3A%2F%2Fgithub.com%2FAlesSystems%2F4ES-Dash%2Fblob%2Fmain%2Fdocs%2FDEPLOYMENT.md)
+
+The button clones the repo and prompts for the required environment variables:
+
+| Variable | What to enter |
+| --- | --- |
+| `STEAM_API_KEY` | Your key from [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) |
+| `NEXTAUTH_SECRET` | `openssl rand -base64 32` |
+| `NEXTAUTH_URL` | Your deployed origin, e.g. `https://your-app.vercel.app` (must be HTTPS, not localhost) |
+| `DATABASE_URL` | A **pooled** Postgres connection string (free tier: Vercel Postgres / Neon / Supabase) |
+| `CRON_SECRET` | `openssl rand -hex 32` — also injected as the cron `Authorization: Bearer` token |
+
+The build provisions the Postgres schema with `prisma db push` and `vercel.json`
+schedules the nightly snapshot cron. Full walkthrough, env reference, and known
+limitations are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#vercel-managed-hosting).
+
+### Self-hosted / local
+
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the local dev setup guide,
 including all required environment variables and what each means. Docker
 support is planned but not yet available.
