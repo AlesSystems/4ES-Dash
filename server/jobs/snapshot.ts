@@ -203,14 +203,13 @@ async function prismaPriorMax(steamId: string, dayKey: Date): Promise<Map<number
 }
 
 /**
- * Best-effort achievement-count snapshot for the most-played achievement games.
- * Bounded to {@link ACHIEVEMENT_SNAPSHOT_LIMIT} because each game costs
- * rate-limited Steam calls. Games whose achievement data is unavailable
- * (private / none) are silently skipped — never throws.
+ * Best-effort cumulative achievement-COUNT snapshot for the most-played
+ * achievement games. Bounded to {@link ACHIEVEMENT_SNAPSHOT_LIMIT} because each
+ * game costs rate-limited Steam calls. Games whose achievement data is
+ * unavailable (private / none) are silently skipped — never throws.
  *
- * In the SAME pass it also records per-achievement unlock EVENTS (#91) from the
- * already-fetched data — no extra Steam calls — so Year-in-Review can count
- * unlocks by their real `unlockedAt` UTC year instead of a snapshot delta.
+ * Per-achievement unlock EVENTS (#91) are recorded separately by
+ * {@link recordAchievementUnlocks} (over ALL achievement-bearing games), not here.
  */
 async function snapshotAchievements(
   steamId: string,
