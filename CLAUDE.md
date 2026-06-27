@@ -8,22 +8,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 When asked to "build X", find the matching workstream under `workstreams/` (or open one) and follow the brief → plan → tasks → implementer/reviewer loop below — do not free-hand a feature.
 
-## Non-negotiables (the gate decides "done", not your confidence)
-
-These are not aspirational. An external, deterministic check enforces each one; an agent's belief that code is correct counts for nothing.
-
-- **Test-first (TDD).** Write a failing test that encodes the requirement, watch it fail for the right reason, then implement to green. No implementation before a red test. See the `superpowers:test-driven-development` skill.
-- **The PostToolUse gate is law.** Every `Edit|Write` to a `*.ts`/`*.tsx` file triggers `.claude/hooks/test-gate.sh`, which runs the related vitest tests + `tsc --noEmit` and **blocks (exit 2) on red**. You cannot proceed on a failing change. Never disable or work around it (to pause it deliberately, see [docs/HOOKS.md](docs/HOOKS.md)).
-- **Generator ≠ judge.** The agent that writes code never certifies it. Review comes from a *different* model in a *separate*, read-only context (`.claude/agents/reviewer.md`). Final ground truth is always tooling — tests, types, lint — never an opinion.
-- **Definition of done** (all must hold before a task leaves `in-review`):
-  1. `pnpm lint && pnpm typecheck && pnpm test && pnpm build` all exit 0 locally.
-  2. Every acceptance criterion in the task file is covered by a test that would fail if the behavior regressed.
-  3. The reviewer agent returns `VERDICT: APPROVE` against the task's acceptance criteria.
-  4. Docs updated per the Documentation Rule below; ERR-XXXX appended if a bug was found/fixed.
-  5. The human (`Altan Esmer`) approves and merges the PR. **Only the merge marks a task `done`** — no agent sets its own task to done.
-- **Never commit `STEAM_API_KEY` or any secret.** Server-only; never prefix a server var with `NEXT_PUBLIC_`. Client components hit `/api/*`, never `api.steampowered.com`.
-- **Validate all Steam I/O with zod at the boundary.** Unexpected shape → `SteamApiError({ kind: "schema" })`, never silent coercion. Steam access goes only through the single rate-limited client in `lib/steam/` — never inline `fetch`.
-
 ## Agentic workflow (where features come from)
 
 Durable state lives in files, not in an agent's context. A feature flows:
@@ -137,37 +121,6 @@ Whenever you create or modify a file in `src/db/`, add or change a Server Action
 ## Multi-Agent Notes
 
 Multiple agents may work on different modules simultaneously. Do not revert unexpected changes — another agent may have made them. When delegating complex tasks, spawn sub-agents in parallel using claude-sonnet-4-6 by default.
-
-## Orchestration & PR Automation
-
-This is the standing workflow for delivering a roadmap phase (used for Phase 0; reuse it for later phases). The **orchestrator** is the main session; it delegates building to sub-agents and stays the integrator/verifier. The human (`Altan Esmer`) remains the contributor.
-
-**Group work into PRs by dependency tier, not one-PR-per-issue.** Phase 0 shipped as 4 PRs: Foundation (#2,#6,#7,#8) → Steam core (#9,#10,#11) → API (#12) → Homepage (#13). Each tier merges to `main` before the next branches off it, so later work always rebases onto merged contracts.
-
-Per-tier loop:
-
-1. **Branch** from fresh `main`: `git checkout main && git pull && git checkout -b <type>/<slug>`.
-2. **Fan out** to parallel implementation sub-agents (`claude-sonnet-4-6`), each scoped to a **disjoint file set**. Write shared "contract" files first (types, error classes, function signatures, formatters) so consumers can build against a stable import; **serialize barrels and assembly files** (e.g. `components/index.ts`, `app/page.tsx`) — they are the merge points. Give each agent its exact file list + the relevant `docs/` citations.
-3. **Integrate + verify (CI-parity gate)** locally, all must exit 0:
-   ```bash
-   pnpm install --frozen-lockfile
-   cp .env.ci .env
-   pnpm lint && pnpm typecheck && pnpm test && pnpm build
-   ```
-   (CI runs lint before typecheck so `next lint` generates `next-env.d.ts` first.)
-4. **Commit + push per tier.** Conventional Commit, body ends with `Closes #<issues>` and the `Co-Authored-By: Claude ...` trailer. Commits are authored by the human (default git config); PRs are created through the human's `gh` — Claude never becomes the author.
-5. **Open PR**: `gh pr create` with `Closes #`, the milestone, and area labels.
-6. **Review sub-agent** (Sonnet) audits the diff against `docs/ACCEPTANCE.md`, the DoD, the relevant `docs/*`, and these conventions; returns BLOCKERS / NITS / VERDICT.
-7. **Address findings**: fix blockers and cheap nits; **decline out-of-scope feedback with a documented rationale** (e.g. Storybook/live-Steam are Phase 1 — record the waiver as a PR comment rather than silently ignoring). Re-run the gate; push the follow-up.
-8. **Auto-merge when green**: `gh pr checks <n> --watch`, then `gh pr merge <n> --squash --delete-branch`. `Closes #` auto-closes the issues.
-9. Repeat for the next tier; close the milestone when `open=0`.
-
-Hard-won conventions (these bit during Phase 0):
-
-- **No real secrets in CI.** `server/env.ts` parses lazily/memoized (first use, not import) so `build`/tests pass on committed placeholder `.env.ci` / `.env.test`. Tests mock Steam with MSW (`onUnhandledRequest: 'error'` — no live call can slip through). Real `STEAM_API_KEY`/`STEAM_ID` are only for manual `pnpm dev`.
-- **Format only the files you touched** (`pnpm exec prettier --write <files>`), never `pnpm format:write` on the whole tree — it reformats unrelated files (issue templates, others' configs) and pollutes the diff. `.prettierignore` covers `.github`, `*.yml`, `*.md`.
-- **Vitest config is `vitest.config.mts`** (not `.ts`) because `vite-tsconfig-paths` is ESM-only.
-- **ESLint flat-vs-legacy:** pinned ESLint 8 + `.eslintrc.json`; the `@typescript-eslint` plugin must be declared explicitly to reference its rules.
 
 ## Important Notes
 
