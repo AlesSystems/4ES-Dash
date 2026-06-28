@@ -8,11 +8,13 @@
  * (playtime 23410, has stats) and 570 (playtime 5000).
  */
 
-import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterAll, afterEach, vi } from 'vitest';
+import { http, HttpResponse } from 'msw';
 import { POST } from '@/app/api/cron/snapshot/route';
 import { prisma } from '@/server/db';
 import { clearCache } from '@/server/cache';
 import { getFirstSeenDates } from '@/server/repositories/snapshots';
+import { steamServer } from '@/tests/mocks/steam-server';
 
 // The job persists `profile.steamId` from GetPlayerSummaries — i.e. the
 // player-summaries fixture's steamid, which differs from the .env.test
@@ -170,5 +172,143 @@ describe('getFirstSeenDates — inferred acquiredAt (#26)', () => {
   it('omits apps that were never snapshotted (acquiredAt stays null)', async () => {
     const firstSeen = await getFirstSeenDates(STEAM_ID);
     expect(firstSeen.has(99999)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bug-03: multi-user snapshot fan-out (AC1, AC2, AC3)
+// ---------------------------------------------------------------------------
+
+const STEAM_ID_B = '76561198111111111';
+
+/** Seed user B as onboarded so runSnapshot finds them. */
+async function seedOnboardedUser(steamId: string): Promise<void> {
+  await prisma.user.upsert({
+    where: { steamId },
+    create: {
+      steamId,
+      personaName: 'UserB',
+      avatarUrl: 'https://avatars.steamstatic.com/b.jpg',
+      createdAt: new Date(0),
+      onboardedAt: new Date(),
+    },
+    update: { onboardedAt: new Date() },
+  });
+}
+
+describe('POST /api/cron/snapshot — multi-user (bug-03)', () => {
+  afterEach(() => {
+    steamServer.resetHandlers();
+  });
+
+  it('AC1: snapshots every onboarded user, not only STEAM_ID', async () => {
+    // Seed user B as onboarded.
+    await seedOnboardedUser(STEAM_ID_B);
+
+    // Override GetPlayerSummaries to echo whichever steamid is requested.
+    steamServer.use(
+      http.get('https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/', ({ request }) => {
+        const url = new URL(request.url);
+        const steamids = url.searchParams.get('steamids') ?? STEAM_ID;
+        const id = steamids.split(',')[0];
+        return HttpResponse.json({
+          response: {
+            players: [{
+              steamid: id,
+              communityvisibilitystate: 3,
+              profilestate: 1,
+              personaname: 'User',
+              profileurl: 'https://steamcommunity.com/id/user/',
+              avatar: 'https://avatars.steamstatic.com/abc123_small.jpg',
+              avatarmedium: 'https://avatars.steamstatic.com/abc123_medium.jpg',
+              avatarfull: 'https://avatars.steamstatic.com/abc123_full.jpg',
+              avatarhash: 'abc123',
+              personastate: 1,
+              timecreated: 1208044800,
+            }],
+          },
+        });
+      }),
+    );
+
+    const res = await post({ 'x-cron-secret': SECRET });
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as { usersProcessed: number };
+    expect(body.usersProcessed).toBe(2);
+
+    const distinct = await prisma.playtimeSnapshot.groupBy({
+      by: ['steamId'],
+    });
+    expect(distinct.length).toBe(2);
+  });
+
+  it('AC2: one user failure does not abort batch; cron returns 200 with other user rows present', async () => {
+    await seedOnboardedUser(STEAM_ID_B);
+
+    // STEAM_ID (featured) gets 500 from GetPlayerSummaries; STEAM_ID_B echoes normally.
+    steamServer.use(
+      http.get('https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/', ({ request }) => {
+        const url = new URL(request.url);
+        const steamids = url.searchParams.get('steamids') ?? '';
+        const id = steamids.split(',')[0];
+        if (id === STEAM_ID) {
+          return HttpResponse.error();
+        }
+        return HttpResponse.json({
+          response: {
+            players: [{
+              steamid: id,
+              communityvisibilitystate: 3,
+              profilestate: 1,
+              personaname: 'UserB',
+              profileurl: 'https://steamcommunity.com/id/userb/',
+              avatar: 'https://avatars.steamstatic.com/abc123_small.jpg',
+              avatarmedium: 'https://avatars.steamstatic.com/abc123_medium.jpg',
+              avatarfull: 'https://avatars.steamstatic.com/abc123_full.jpg',
+              avatarhash: 'abc123',
+              personastate: 1,
+              timecreated: 1208044800,
+            }],
+          },
+        });
+      }),
+    );
+
+    const res = await post({ 'x-cron-secret': SECRET });
+    expect(res.status).toBe(200);
+
+    // B's rows are present; A's are absent.
+    const bRows = await prisma.playtimeSnapshot.findMany({ where: { steamId: STEAM_ID_B } });
+    expect(bRows.length).toBeGreaterThan(0);
+    const aRows = await prisma.playtimeSnapshot.findMany({ where: { steamId: STEAM_ID } });
+    expect(aRows.length).toBe(0);
+  });
+
+  it('AC3: featured-also-onboarded user is processed exactly once (dedup)', async () => {
+    // Seed the env STEAM_ID (from .env.test) as onboarded — it appears in both
+    // getEnv().STEAM_ID and the findMany results; the Set union must deduplicate.
+    const { getEnv } = await import('@/server/env');
+    const envSteamId = getEnv().STEAM_ID ?? STEAM_ID;
+    await prisma.user.upsert({
+      where: { steamId: envSteamId },
+      create: {
+        steamId: envSteamId,
+        personaName: 'Ales',
+        avatarUrl: 'https://avatars.steamstatic.com/abc123_full.jpg',
+        createdAt: new Date(0),
+        onboardedAt: new Date(),
+      },
+      update: { onboardedAt: new Date() },
+    });
+
+    const res = await post({ 'x-cron-secret': SECRET });
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as { usersProcessed: number };
+    expect(body.usersProcessed).toBe(1);
+
+    const distinct = await prisma.playtimeSnapshot.groupBy({ by: ['steamId'] });
+    expect(distinct.length).toBe(1);
   });
 });

@@ -17,6 +17,15 @@ export async function getProfile(steamId: string): Promise<{
   profile: PlayerSummary;
   games: OwnedGame[];
   stale: boolean;
+  /**
+   * True when Steam returns a non-empty library where every game has
+   * `playtime.total === 0` AND at least one game has a non-null `lastPlayed`
+   * timestamp. This is a near-conclusive signal that the account has
+   * "Game details" privacy enabled — a never-played game cannot have a
+   * last-played timestamp. A genuinely-new (all-null lastPlayed) account
+   * yields false and is NOT flagged. (bug-02)
+   */
+  playtimeHidden: boolean;
 }> {
   const id = requireSteamId(steamId, 'getProfile');
 
@@ -33,9 +42,16 @@ export async function getProfile(steamId: string): Promise<{
     ),
   ]);
 
+  const g = games.value;
+  const playtimeHidden =
+    g.length > 0 &&
+    g.every((x) => x.playtime.total === 0) &&
+    g.some((x) => x.lastPlayed !== null);
+
   return {
     profile: summary.value,
-    games: games.value,
+    games: g,
     stale: summary.stale || games.stale,
+    playtimeHidden,
   };
 }

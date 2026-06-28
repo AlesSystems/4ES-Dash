@@ -16,6 +16,10 @@ import {
   AchievementSummarySection,
   AchievementSummarySkeleton,
 } from '@/components/dashboard/AchievementSummarySection';
+import {
+  AchievementKpiSection,
+  AchievementKpiSkeleton,
+} from '@/components/dashboard/AchievementKpiSection';
 import { EmptyState } from '@/components/states/EmptyState';
 import { StaleBanner } from '@/components/states/StaleBanner';
 import { Landing } from '@/components/marketing/Landing';
@@ -122,15 +126,20 @@ export default async function HomePage() {
 
       {stale ? <StaleBanner className="mb-6" /> : null}
 
-      {/* Achievement % is sourced from the deferred achievement aggregate (#85),
-          so it is not part of the initial blocking payload — the KPI tile shows
-          its designed pending state and the full % streams into the
-          AchievementSummary section below. */}
+      {/* The Achievements KPI tile streams in its own Suspense boundary so it
+          never blocks first paint. Both this tile and AchievementSummarySection
+          below call getAchievementProgress — the cache single-flight map
+          (server/cache.ts inFlight) collapses the two into one Steam fan-out
+          per render. See plan-01 decision note. */}
       <KpiRow
         totalPlaytimeMinutes={totalPlaytimeMinutes}
         librarySize={games.length}
         recentlyPlayedCount={recent.games.length}
-        achievementPercent={null}
+        achievements={
+          <Suspense fallback={<AchievementKpiSkeleton />}>
+            <AchievementKpiSection steamId={featuredId} appIds={achievementAppIds} />
+          </Suspense>
+        }
       />
 
       <div className="mb-8">

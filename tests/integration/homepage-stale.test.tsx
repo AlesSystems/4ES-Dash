@@ -16,6 +16,12 @@ vi.mock('@/components/dashboard/AchievementSummarySection', () => ({
   AchievementSummarySkeleton: () => null,
 }));
 
+// The Achievements KPI tile is an async server component (bug-01 fix) — stub it.
+vi.mock('@/components/dashboard/AchievementKpiSection', () => ({
+  AchievementKpiSection: () => null,
+  AchievementKpiSkeleton: () => null,
+}));
+
 // When the cache serves stale data (its SWR path is unit-tested in cache.test.ts),
 // getProfile reports `stale: true`; assert the homepage surfaces the indicator.
 vi.mock('@/server/repositories/profile', () => ({

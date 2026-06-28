@@ -4,6 +4,8 @@ export interface LibraryHeaderProps {
   totalPlaytimeMinutes: number;
   inProgressCount: number;
   untouchedCount: number;
+  /** When true playtime is hidden by Steam privacy — suppress fabricated counts. */
+  playtimeHidden?: boolean;
 }
 
 export function LibraryHeader({
@@ -12,6 +14,7 @@ export function LibraryHeader({
   totalPlaytimeMinutes,
   inProgressCount,
   untouchedCount,
+  playtimeHidden = false,
 }: LibraryHeaderProps): JSX.Element {
   const totalHours = Math.round(totalPlaytimeMinutes / 60).toLocaleString();
   const yearLabel = accountAgeYears === 1 ? 'year' : 'years';
@@ -39,10 +42,14 @@ export function LibraryHeader({
           ·
         </span>
         <span>{totalHours} hours</span>
-        <span className="text-border-2" aria-hidden>
-          ·
-        </span>
-        <span>{untouchedCount.toLocaleString()} unplayed</span>
+        {!playtimeHidden && (
+          <>
+            <span className="text-border-2" aria-hidden>
+              ·
+            </span>
+            <span>{untouchedCount.toLocaleString()} unplayed</span>
+          </>
+        )}
       </div>
 
       {/* Stat strip */}
@@ -60,7 +67,11 @@ export function LibraryHeader({
             Untouched
           </span>
           <span className="font-mono text-body tabular-nums text-text-1">
-            {untouchedCount.toLocaleString()}
+            {playtimeHidden ? (
+              <span className="text-text-3">—</span>
+            ) : (
+              untouchedCount.toLocaleString()
+            )}
           </span>
         </div>
         <div className="flex items-baseline gap-2">

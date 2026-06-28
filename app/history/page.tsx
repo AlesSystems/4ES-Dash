@@ -53,15 +53,23 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
         </p>
       </div>
 
-      {points.length < 2 ? (
-        /* ≥2-points guard — designed empty state, not a blank chart */
+      {rows.length === 0 ? (
+        /* No snapshots at all — first run hasn't fired yet */
+        <div className="rounded-lg border border-border bg-surface p-6">
+          <h2 className="font-serif text-xl font-semibold text-text-1">No history yet</h2>
+          <p className="mt-2 text-sm text-text-3">
+            Snapshots are captured nightly. Come back tomorrow to see your first data point.
+          </p>
+        </div>
+      ) : points.length < 2 ? (
+        /* Some snapshots exist but not enough distinct periods to draw a chart */
         <div className="rounded-lg border border-border bg-surface p-6">
           <h2 className="font-serif text-xl font-semibold text-text-1">
-            Not enough history yet — check back tomorrow
+            History is still building
           </h2>
           <p className="mt-2 text-sm text-text-3">
-            We need at least two days of snapshot data to draw a chart. Keep playing and come back
-            soon.
+            We need at least two {bucket === 'week' ? 'weeks' : 'months'} of data to draw a chart.
+            Keep playing and check back soon.
           </p>
         </div>
       ) : (

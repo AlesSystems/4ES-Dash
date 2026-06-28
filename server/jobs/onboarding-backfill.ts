@@ -47,7 +47,7 @@ export interface OnboardingResult {
  */
 export async function runOnboardingBackfill(
   steamId: string,
-  opts?: { force?: boolean },
+  opts?: { force?: boolean; achievementUnlockLimit?: number },
 ): Promise<OnboardingResult> {
   // Throws MissingSteamIdError synchronously for blank input — callers can
   // let this propagate (it is a programming error, not a runtime failure).
@@ -94,100 +94,98 @@ export async function runOnboardingBackfill(
   const dayKey = utcDayKey();
 
   // ------------------------------------------------------------------
-  // Upsert the User reference row.
+  // All reference writes + the onboardedAt stamp are wrapped in a single
+  // $transaction so onboardedAt only commits if every write succeeds.
+  // recordAchievementUnlocks stays outside (best-effort, not structural).
   // ------------------------------------------------------------------
-  await prisma.user.upsert({
-    where: { steamId: id },
-    create: {
-      steamId: id,
-      personaName: profile.personaName,
-      avatarUrl: profile.avatar.full,
-      countryCode: profile.countryCode ?? null,
-      // createdAt is an ISO-8601 string from PlayerSummarySchema; epoch signals
-      // "unknown" when Steam omits timecreated (private/new accounts).
-      createdAt: profile.createdAt ? new Date(profile.createdAt) : new Date(0),
-    },
-    update: {
-      personaName: profile.personaName,
-      avatarUrl: profile.avatar.full,
-      countryCode: profile.countryCode ?? null,
-      lastSyncedAt: new Date(),
-    },
+  await prisma.$transaction(async (tx) => {
+    // Upsert the User reference row.
+    await tx.user.upsert({
+      where: { steamId: id },
+      create: {
+        steamId: id,
+        personaName: profile.personaName,
+        avatarUrl: profile.avatar.full,
+        countryCode: profile.countryCode ?? null,
+        // createdAt is an ISO-8601 string from PlayerSummarySchema; epoch signals
+        // "unknown" when Steam omits timecreated (private/new accounts).
+        createdAt: profile.createdAt ? new Date(profile.createdAt) : new Date(0),
+      },
+      update: {
+        personaName: profile.personaName,
+        avatarUrl: profile.avatar.full,
+        countryCode: profile.countryCode ?? null,
+        lastSyncedAt: new Date(),
+      },
+    });
+
+    // Upsert Game + OwnedGame reference rows for each owned game.
+    for (const game of games) {
+      await tx.game.upsert({
+        where: { appId: game.appId },
+        create: {
+          appId: game.appId,
+          name: game.name,
+          iconUrl: game.iconUrl ?? null,
+          headerUrl: null,
+          releaseDate: null,
+          genres: '[]',
+          hasStats: game.hasAchievements ?? false,
+        },
+        update: {
+          name: game.name,
+          iconUrl: game.iconUrl ?? null,
+          refreshedAt: new Date(),
+        },
+      });
+
+      await tx.ownedGame.upsert({
+        where: { steamId_appId: { steamId: id, appId: game.appId } },
+        create: {
+          steamId: id,
+          appId: game.appId,
+          playtimeForever: game.playtime.total,
+          playtimeTwoWeeks: game.playtime.twoWeeks ?? 0,
+          // lastPlayed is an ISO-8601 string from OwnedGameSchema (nullable)
+          lastPlayedAt: game.lastPlayed ? new Date(game.lastPlayed) : null,
+        },
+        update: {
+          playtimeForever: game.playtime.total,
+          playtimeTwoWeeks: game.playtime.twoWeeks ?? 0,
+          lastPlayedAt: game.lastPlayed ? new Date(game.lastPlayed) : null,
+          refreshedAt: new Date(),
+        },
+      });
+    }
+
+    // Seed initial PlaytimeSnapshot for today.
+    // Uses per-row upsert (not createMany) for SQLite compatibility (ERR-0005).
+    for (const game of games) {
+      const { value } = clampPlaytime(game.playtime.total, 0);
+      await tx.playtimeSnapshot.upsert({
+        where: { steamId_appId_date: { steamId: id, appId: game.appId, date: dayKey } },
+        create: { steamId: id, appId: game.appId, date: dayKey, playtimeForever: value },
+        update: {}, // immutable once written — idempotent re-run
+      });
+    }
+
+    // Mark the user as onboarded — only commits if all the above succeed.
+    await tx.user.update({
+      where: { steamId: id },
+      data: { onboardedAt: new Date() },
+    });
   });
 
   // ------------------------------------------------------------------
-  // Upsert Game + OwnedGame reference rows for each owned game.
-  // ------------------------------------------------------------------
-  for (const game of games) {
-    await prisma.game.upsert({
-      where: { appId: game.appId },
-      create: {
-        appId: game.appId,
-        name: game.name,
-        iconUrl: game.iconUrl ?? null,
-        headerUrl: null,
-        releaseDate: null,
-        genres: '[]',
-        hasStats: game.hasAchievements ?? false,
-      },
-      update: {
-        name: game.name,
-        iconUrl: game.iconUrl ?? null,
-        refreshedAt: new Date(),
-      },
-    });
-
-    await prisma.ownedGame.upsert({
-      where: { steamId_appId: { steamId: id, appId: game.appId } },
-      create: {
-        steamId: id,
-        appId: game.appId,
-        playtimeForever: game.playtime.total,
-        playtimeTwoWeeks: game.playtime.twoWeeks ?? 0,
-        // lastPlayed is an ISO-8601 string from OwnedGameSchema (nullable)
-        lastPlayedAt: game.lastPlayed ? new Date(game.lastPlayed) : null,
-      },
-      update: {
-        playtimeForever: game.playtime.total,
-        playtimeTwoWeeks: game.playtime.twoWeeks ?? 0,
-        lastPlayedAt: game.lastPlayed ? new Date(game.lastPlayed) : null,
-        refreshedAt: new Date(),
-      },
-    });
-  }
-
-  // ------------------------------------------------------------------
-  // Seed initial PlaytimeSnapshot for today (mirror runSnapshot logic).
-  // No prior snapshots exist — clamp floor is 0 for each game.
-  // Uses per-row upsert (not createMany) for SQLite compatibility (ERR-0005).
-  // ------------------------------------------------------------------
-  for (const game of games) {
-    const { value } = clampPlaytime(game.playtime.total, 0);
-    await prisma.playtimeSnapshot.upsert({
-      where: { steamId_appId_date: { steamId: id, appId: game.appId, date: dayKey } },
-      create: { steamId: id, appId: game.appId, date: dayKey, playtimeForever: value },
-      update: {}, // immutable once written — idempotent re-run
-    });
-  }
-
-  // ------------------------------------------------------------------
-  // Seed per-achievement unlock events (#91) so prior years populate
-  // retroactively from the user's existing unlocks, attributed by their real
-  // unlockedAt. Best-effort: failures here never block onboarding completion.
+  // Seed per-achievement unlock events (#91) — best-effort, outside the
+  // transaction: a Steam failure here must not roll back the onboarding.
+  // Thread the optional limit from the resync path (bounded fan-out).
   // ------------------------------------------------------------------
   try {
-    await recordAchievementUnlocks(id, games);
+    await recordAchievementUnlocks(id, games, opts?.achievementUnlockLimit);
   } catch (err) {
     console.error('[onboarding-backfill] achievement unlock seeding failed for steamId=%s', id, err);
   }
-
-  // ------------------------------------------------------------------
-  // Mark the user as onboarded.
-  // ------------------------------------------------------------------
-  await prisma.user.update({
-    where: { steamId: id },
-    data: { onboardedAt: new Date() },
-  });
 
   return { onboarded: true };
 }

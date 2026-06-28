@@ -76,7 +76,10 @@ export async function deleteAccountData(steamId: string): Promise<void> {
  * @throws MissingSteamIdError if steamId is blank (via runOnboardingBackfill).
  * @returns The OnboardingResult from the backfill.
  */
-export async function resyncAccount(steamId: string): Promise<OnboardingResult> {
+export async function resyncAccount(
+  steamId: string,
+  achievementUnlockLimit?: number,
+): Promise<OnboardingResult> {
   // requireSteamId is called inside runOnboardingBackfill — no need to duplicate.
-  return runOnboardingBackfill(steamId, { force: true });
+  return runOnboardingBackfill(steamId, { force: true, achievementUnlockLimit });
 }

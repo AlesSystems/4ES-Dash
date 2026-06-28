@@ -24,6 +24,9 @@ export interface LibraryControlsProps {
   view?: ViewMode;
   multiplayer?: boolean;
   uncategorizedCount?: number;
+  /** When true the chip labeled "Untouched" is relabeled "Playtime hidden".
+   *  The filter still works on real data; the label must not assert "never played". */
+  playtimeHidden?: boolean;
 }
 
 export function LibraryControls({
@@ -36,6 +39,7 @@ export function LibraryControls({
   view = 'grid',
   multiplayer = false,
   uncategorizedCount = 0,
+  playtimeHidden = false,
 }: LibraryControlsProps): JSX.Element {
   const router = useRouter();
   const pathname = usePathname();
@@ -132,7 +136,7 @@ export function LibraryControls({
                     : 'border border-border-2 text-text-2 hover:text-text-1',
                 )}
               >
-                {STATUS_LABELS[key]}
+                {key === 'untouched' && playtimeHidden ? 'Playtime hidden' : STATUS_LABELS[key]}
               </button>
             );
           })}
@@ -217,7 +221,9 @@ export function LibraryControls({
             <span className="text-border-2" aria-hidden>
               ·
             </span>
-            <span>{STATUS_LABELS[status]}</span>
+            <span>
+              {status === 'untouched' && playtimeHidden ? 'Playtime hidden' : STATUS_LABELS[status]}
+            </span>
           </>
         )}
       </p>

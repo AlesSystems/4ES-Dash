@@ -18,6 +18,10 @@ import { z } from 'zod';
 import { getSessionUser } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { deleteAccountData, resyncAccount } from '@/server/repositories/account';
+import type { OnboardingResult } from '@/server/jobs/onboarding-backfill';
+
+/** Bounded per-game achievement fan-out on the interactive re-sync path. */
+const ACHIEVEMENT_RESYNC_LIMIT = 20;
 
 // Zod schema for the privacy enum — validates input before any DB write.
 const PrivacySchema = z.enum(['public', 'friendsOnly', 'private']);
@@ -64,15 +68,16 @@ export async function setPrivacy(level: 'public' | 'friendsOnly' | 'private'): P
  *
  * @throws Error if no session user (unauthenticated).
  */
-export async function resyncNow(): Promise<void> {
+export async function resyncNow(): Promise<OnboardingResult> {
   const sessionUser = await getSessionUser();
   if (!sessionUser) {
     throw new Error('Unauthenticated: no session user found');
   }
 
-  await resyncAccount(sessionUser.steamId);
+  const result = await resyncAccount(sessionUser.steamId, ACHIEVEMENT_RESYNC_LIMIT);
 
   revalidatePath('/settings');
+  return result;
 }
 
 // ---------------------------------------------------------------------------
