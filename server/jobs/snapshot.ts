@@ -41,6 +41,26 @@ export interface SnapshotResult {
 }
 
 /**
+ * Aggregated result returned by `runSnapshot()` after processing all users.
+ * Top-level numeric keys are summed across users for backward compatibility
+ * with the cron route (which returns them verbatim) and existing assertions.
+ */
+export interface SnapshotBatchResult {
+  /** Total owned games seen across all users. */
+  gamesProcessed: number;
+  /** Total playtime rows written across all users. */
+  rowsInserted: number;
+  /** Total monotonic clamps across all users. */
+  clamped: number;
+  /** Total achievement rows written across all users. */
+  achievementRowsInserted: number;
+  /** Number of distinct users processed this run. */
+  usersProcessed: number;
+  /** Per-user result details. */
+  results: SnapshotResult[];
+}
+
+/**
  * Truncate a timestamp to its UTC calendar day (midnight UTC). Snapshots are
  * keyed by day, not hour — Steam playtime isn't real-time anyway.
  */
@@ -61,135 +81,159 @@ export function clampPlaytime(
 }
 
 /**
- * Run the snapshot job for the featured Steam user (getEnv().STEAM_ID).
- * Writes a `JobRun` row for observability (running → ok/error).
- * Throws on an unrecoverable failure (e.g. a private profile) after recording
- * the failed `JobRun`; the cron route maps that to a 500.
- *
- * Task 04 note: getEnv().STEAM_ID is the featured-profile default used at this
- * call site. Task 05 will replace this with the session user's steamId once
- * multi-user auth is wired. Snapshotting all users is future work (see ADR).
+ * Run the snapshot job for a single Steam user. Extracted from the original
+ * `runSnapshot` so that `runSnapshot` can fan-out across all onboarded users.
+ * Does NOT create a JobRun row — the caller is responsible for observability.
+ * Throws on unrecoverable failure (private profile, network error, etc.).
  */
-export async function runSnapshot(): Promise<SnapshotResult> {
-  // Featured/dev default — the call site is responsible for supplying steamId.
-  // STEAM_ID is now optional in env; guard gracefully if absent.
-  const featuredId = getEnv().STEAM_ID;
-  if (!featuredId) {
-    throw new Error('STEAM_ID is not configured — cannot run snapshot without a target steamId');
+export async function runSnapshotForUser(steamId: string): Promise<SnapshotResult> {
+  const { profile, games } = await getProfile(steamId);
+  const resolvedSteamId = profile.steamId;
+  const dayKey = utcDayKey();
+
+  // The snapshot tables FK to User — ensure the row exists before inserting.
+  await prisma.user.upsert({
+    where: { steamId: resolvedSteamId },
+    create: {
+      steamId: resolvedSteamId,
+      personaName: profile.personaName,
+      avatarUrl: profile.avatar.full,
+      countryCode: profile.countryCode ?? null,
+      // createdAt is non-null in the schema; epoch signals "unknown" when Steam
+      // omits timecreated (private/new accounts).
+      createdAt: profile.createdAt ? new Date(profile.createdAt) : new Date(0),
+    },
+    update: {
+      personaName: profile.personaName,
+      avatarUrl: profile.avatar.full,
+      countryCode: profile.countryCode ?? null,
+      lastSyncedAt: new Date(),
+    },
+  });
+
+  // Latest prior playtime per app (strictly before today) for the clamp.
+  const priorMaxByApp = await prismaPriorMax(resolvedSteamId, dayKey);
+
+  // Which apps already have a row for today (so re-runs report 0 inserted).
+  const existingToday = await prisma.playtimeSnapshot.findMany({
+    where: { steamId: resolvedSteamId, date: dayKey },
+    select: { appId: true },
+  });
+  const existingAppIds = new Set(existingToday.map((r) => r.appId));
+
+  let clamped = 0;
+  let rowsInserted = 0;
+  const upserts = games.map((game) => {
+    const prior = priorMaxByApp.get(game.appId) ?? 0;
+    const { value, clamped: didClamp } = clampPlaytime(game.playtime.total, prior);
+    if (didClamp) {
+      clamped += 1;
+      console.warn(
+        '[snapshot] monotonic clamp applied steamId=%s appId=%d reported=%d previous=%d',
+        resolvedSteamId,
+        game.appId,
+        game.playtime.total,
+        prior,
+      );
+    }
+    if (!existingAppIds.has(game.appId)) rowsInserted += 1;
+    return prisma.playtimeSnapshot.upsert({
+      where: { steamId_appId_date: { steamId: resolvedSteamId, appId: game.appId, date: dayKey } },
+      create: { steamId: resolvedSteamId, appId: game.appId, date: dayKey, playtimeForever: value },
+      update: {}, // today's row is immutable once written → idempotent re-run
+    });
+  });
+  await prisma.$transaction(upserts);
+
+  const achievementRowsInserted = await snapshotAchievements(resolvedSteamId, games, dayKey);
+
+  // Record per-achievement unlock EVENTS for ALL achievement-bearing games.
+  // Best-effort: never fails the snapshot.
+  try {
+    await recordAchievementUnlocks(resolvedSteamId, games);
+  } catch (err) {
+    console.error('[snapshot] achievement unlock recording failed steamId=%s', resolvedSteamId, err);
   }
 
+  // Pre-compute the library-value aggregate. Best-effort.
+  try {
+    await refreshLibraryValueAggregate(resolvedSteamId, games);
+  } catch (err) {
+    console.error('[snapshot] library-value aggregate refresh failed steamId=%s', resolvedSteamId, err);
+  }
+
+  // Persist per-game genres + current price. Best-effort.
+  try {
+    await refreshGameStoreData(games);
+  } catch (err) {
+    console.error('[snapshot] game store data refresh failed steamId=%s', resolvedSteamId, err);
+  }
+
+  return {
+    steamId: resolvedSteamId,
+    date: dayKey.toISOString().slice(0, 10),
+    gamesProcessed: games.length,
+    rowsInserted,
+    clamped,
+    achievementRowsInserted,
+  };
+}
+
+/**
+ * Run the nightly snapshot job for ALL onboarded users plus the featured
+ * STEAM_ID (if configured). Uses a deduped Set so a featured-also-onboarded
+ * user is only processed once. One user's failure is isolated (try/catch +
+ * log); the batch continues and the cron route returns 200 regardless.
+ * Returns a backward-compatible `SnapshotBatchResult` whose top-level numeric
+ * keys are summed across users (so existing route + test assertions hold for
+ * the single-user case).
+ */
+export async function runSnapshot(): Promise<SnapshotBatchResult> {
   const job = await prisma.jobRun.create({
     data: { name: 'snapshot', status: 'running' },
   });
 
   try {
-    const { profile, games } = await getProfile(featuredId);
-    const steamId = profile.steamId;
-    const dayKey = utcDayKey();
+    // Build deduped target set: featured STEAM_ID (if set) ∪ all onboarded users.
+    const targetSet = new Set<string>();
+    const featuredId = getEnv().STEAM_ID;
+    if (featuredId) targetSet.add(featuredId);
 
-    // The snapshot tables FK to User — ensure the row exists before inserting.
-    await prisma.user.upsert({
-      where: { steamId },
-      create: {
-        steamId,
-        personaName: profile.personaName,
-        avatarUrl: profile.avatar.full,
-        countryCode: profile.countryCode ?? null,
-        // createdAt is non-null in the schema; epoch signals "unknown" when Steam
-        // omits timecreated (private/new accounts).
-        createdAt: profile.createdAt ? new Date(profile.createdAt) : new Date(0),
-      },
-      update: {
-        personaName: profile.personaName,
-        avatarUrl: profile.avatar.full,
-        countryCode: profile.countryCode ?? null,
-        lastSyncedAt: new Date(),
-      },
+    const onboardedUsers = await prisma.user.findMany({
+      where: { onboardedAt: { not: null } },
+      select: { steamId: true },
     });
+    for (const u of onboardedUsers) targetSet.add(u.steamId);
 
-    // Latest prior playtime per app (strictly before today) for the clamp.
-    const priorMaxByApp = await prismaPriorMax(steamId, dayKey);
+    if (targetSet.size === 0) {
+      throw new Error('No target users configured — set STEAM_ID or onboard a user first');
+    }
 
-    // Which apps already have a row for today (so re-runs report 0 inserted).
-    // This drives the `rowsInserted` count only — it is best-effort reporting,
-    // not the idempotency mechanism (that is the upsert's compound PK below).
-    const existingToday = await prisma.playtimeSnapshot.findMany({
-      where: { steamId, date: dayKey },
-      select: { appId: true },
-    });
-    const existingAppIds = new Set(existingToday.map((r) => r.appId));
-
-    let clamped = 0;
-    let rowsInserted = 0;
-    const upserts = games.map((game) => {
-      const prior = priorMaxByApp.get(game.appId) ?? 0;
-      const { value, clamped: didClamp } = clampPlaytime(game.playtime.total, prior);
-      if (didClamp) {
-        clamped += 1;
-        console.warn(
-          '[snapshot] monotonic clamp applied steamId=%s appId=%d reported=%d previous=%d',
-          steamId,
-          game.appId,
-          game.playtime.total,
-          prior,
-        );
+    const results: SnapshotResult[] = [];
+    for (const id of targetSet) {
+      try {
+        const result = await runSnapshotForUser(id);
+        results.push(result);
+      } catch (err) {
+        console.error('[snapshot] per-user snapshot failed steamId=%s', id, err);
       }
-      if (!existingAppIds.has(game.appId)) rowsInserted += 1;
-      return prisma.playtimeSnapshot.upsert({
-        where: { steamId_appId_date: { steamId, appId: game.appId, date: dayKey } },
-        create: { steamId, appId: game.appId, date: dayKey, playtimeForever: value },
-        update: {}, // today's row is immutable once written → idempotent re-run
-      });
-    });
-    await prisma.$transaction(upserts);
-
-    const achievementRowsInserted = await snapshotAchievements(steamId, games, dayKey);
-
-    // Record per-achievement unlock EVENTS for ALL achievement-bearing games
-    // (#91) so unlocks outside the top-N-played set still count in Year-in-Review.
-    // Off the request path; getGameAchievements is cached so the games already
-    // fetched above are not re-fetched. Best-effort: never fails the snapshot.
-    try {
-      await recordAchievementUnlocks(steamId, games);
-    } catch (err) {
-      console.error('[snapshot] achievement unlock recording failed steamId=%s', steamId, err);
     }
 
-    // Pre-compute the library-value aggregate OFF the request path (#85) so the
-    // dashboard reads a single row instead of pricing every game live. The Store
-    // pricing fan-out uses the dedicated storeLimiter, so it never starves the
-    // Web API limiter. Best-effort: a pricing hiccup must not fail the snapshot.
-    try {
-      await refreshLibraryValueAggregate(steamId, games);
-    } catch (err) {
-      console.error('[snapshot] library-value aggregate refresh failed steamId=%s', steamId, err);
-    }
-
-    // Persist per-game genres + current price into the Game table OFF the request
-    // path (ERR-0011) so the Insights pages (genres, cost-per-hour) read these
-    // columns instead of pricing/typing every game live on render. Best-effort:
-    // a Store hiccup must not fail the snapshot.
-    try {
-      await refreshGameStoreData(games);
-    } catch (err) {
-      console.error('[snapshot] game store data refresh failed steamId=%s', steamId, err);
-    }
-
-    const result: SnapshotResult = {
-      steamId,
-      date: dayKey.toISOString().slice(0, 10),
-      gamesProcessed: games.length,
-      rowsInserted,
-      clamped,
-      achievementRowsInserted,
+    const batch: SnapshotBatchResult = {
+      gamesProcessed: results.reduce((s, r) => s + r.gamesProcessed, 0),
+      rowsInserted: results.reduce((s, r) => s + r.rowsInserted, 0),
+      clamped: results.reduce((s, r) => s + r.clamped, 0),
+      achievementRowsInserted: results.reduce((s, r) => s + r.achievementRowsInserted, 0),
+      usersProcessed: results.length,
+      results,
     };
 
     await prisma.jobRun.update({
       where: { id: job.id },
-      data: { status: 'ok', finishedAt: new Date(), payload: JSON.stringify(result) },
+      data: { status: 'ok', finishedAt: new Date(), payload: JSON.stringify(batch) },
     });
 
-    return result;
+    return batch;
   } catch (err) {
     await prisma.jobRun.update({
       where: { id: job.id },
@@ -297,8 +341,12 @@ async function upsertUnlockEvents(
 export async function recordAchievementUnlocks(
   steamId: string,
   games: OwnedGame[],
+  limit?: number,
 ): Promise<number> {
-  const candidates = games.filter((g) => g.hasAchievements);
+  const all = games.filter((g) => g.hasAchievements);
+  // When a limit is provided (interactive resync path), cap to the top-N by
+  // playtime so the fan-out is bounded. When omitted (nightly), process all.
+  const candidates = limit !== undefined ? topGamesByPlaytime(all, limit) : all;
 
   let total = 0;
   for (const game of candidates) {

@@ -8,6 +8,9 @@ export interface GameRowProps {
   headerUrl: string;
   playtimeMinutes: number;
   twoWeeksMinutes?: number;
+  /** When true the account's playtime is hidden by Steam privacy — render "—"
+   *  instead of "Untouched" so the label doesn't fabricate a "never played" claim. */
+  playtimeHidden?: boolean;
 }
 
 /**
@@ -20,13 +23,20 @@ export function GameRow({
   headerUrl,
   playtimeMinutes,
   twoWeeksMinutes,
+  playtimeHidden = false,
 }: GameRowProps): JSX.Element {
   const untouched = playtimeMinutes === 0;
+  const ariaPlaytime =
+    playtimeHidden && untouched
+      ? 'playtime hidden'
+      : untouched
+        ? 'untouched'
+        : formatHours(playtimeMinutes);
 
   return (
     <Link
       href={`/game/${appId}`}
-      aria-label={`${name} — ${untouched ? 'untouched' : formatHours(playtimeMinutes)}`}
+      aria-label={`${name} — ${ariaPlaytime}`}
       className="group flex items-center gap-4 px-4 py-3 transition-colors hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500"
     >
       <div className="relative aspect-[2/1] w-28 shrink-0 overflow-hidden rounded-md">
@@ -39,7 +49,7 @@ export function GameRow({
         </span>
       )}
       <span className="shrink-0 font-mono text-body tabular-nums text-text-1">
-        {untouched ? 'Untouched' : formatHours(playtimeMinutes)}
+        {untouched && playtimeHidden ? '—' : untouched ? 'Untouched' : formatHours(playtimeMinutes)}
       </span>
     </Link>
   );

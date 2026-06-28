@@ -19,6 +19,13 @@ vi.mock('@/components/dashboard/AchievementSummarySection', () => ({
   AchievementSummarySkeleton: () => null,
 }));
 
+// The Achievements KPI tile is an async server component in its own Suspense
+// boundary (bug-01 fix) — stub it so @testing-library can render in jsdom.
+vi.mock('@/components/dashboard/AchievementKpiSection', () => ({
+  AchievementKpiSection: () => null,
+  AchievementKpiSkeleton: () => null,
+}));
+
 // Control the resolved viewer id without touching env. Defaults to the test
 // SteamID so the existing dashboard tests run authenticated; the anonymous case
 // sets it to '' to exercise the production logged-out path (ERR-0013). We keep

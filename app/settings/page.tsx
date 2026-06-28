@@ -22,6 +22,12 @@ import { DeleteAccountForm } from './DeleteAccountForm';
 
 export const dynamic = 'force-dynamic';
 
+// Non-load-bearing safety budget for the interactive re-sync. The achievement
+// fan-out is bounded in code (see recordAchievementUnlocks `limit`), so this is
+// only a ceiling. 60s is the Vercel Hobby maximum — raise to 300 on Pro after
+// confirming the plan (plan-04 data-ops Vercel check). (bug-04)
+export const maxDuration = 60;
+
 export const metadata: Metadata = {
   title: 'Settings',
   description: 'Manage your 4ES Dash privacy and account.',

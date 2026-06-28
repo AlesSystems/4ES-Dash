@@ -9,6 +9,8 @@ import { GameRow } from './GameRow';
 export interface LibraryResultsProps {
   games: LibraryGame[];
   view: ViewMode;
+  /** When true playtime is hidden by Steam privacy — passed to each game tile. */
+  playtimeHidden?: boolean;
 }
 
 const PAGE_SIZE = 24;
@@ -18,7 +20,11 @@ const PAGE_SIZE = 24;
  * more games client-side (no extra fetch; the full filtered list is already on
  * the page). Remount via the page's `key` resets pagination when filters change.
  */
-export function LibraryResults({ games, view }: LibraryResultsProps): JSX.Element {
+export function LibraryResults({
+  games,
+  view,
+  playtimeHidden = false,
+}: LibraryResultsProps): JSX.Element {
   const [visible, setVisible] = useState(PAGE_SIZE);
   const shown = games.slice(0, visible);
   const remaining = games.length - shown.length;
@@ -38,6 +44,7 @@ export function LibraryResults({ games, view }: LibraryResultsProps): JSX.Elemen
                 headerUrl={game.headerUrl}
                 playtimeMinutes={game.playtime.total}
                 twoWeeksMinutes={game.playtime.twoWeeks}
+                playtimeHidden={playtimeHidden}
               />
             </li>
           ))}
@@ -53,6 +60,7 @@ export function LibraryResults({ games, view }: LibraryResultsProps): JSX.Elemen
                 playtimeMinutes={game.playtime.total}
                 twoWeeksMinutes={game.playtime.twoWeeks}
                 hasAchievements={game.hasAchievements}
+                playtimeHidden={playtimeHidden}
               />
             </li>
           ))}

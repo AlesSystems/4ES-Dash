@@ -143,4 +143,22 @@ describe('recordAchievementUnlocks (#91 write path)', () => {
     expect(total).toBe(0);
     expect(mockGetGameAchievements).not.toHaveBeenCalled();
   });
+
+  it('AC3 (bug-04): with limit=K processes only top-K-by-playtime achievement games', async () => {
+    // 3 achievement games; limit=2 → only the top 2 by playtime are processed.
+    const games = [game(100, 5000), game(200, 1000), game(300, 100)];
+
+    mockGetGameAchievements.mockImplementation(async (_id: string, appId: number) =>
+      available(gameAchievements([item(`ach-${appId}`, true, '2025-01-01T00:00:00.000Z')])),
+    );
+
+    await recordAchievementUnlocks(STEAM_ID, games, 2);
+
+    // Only top-2 by playtime (appId 100 and 200) should be fetched.
+    expect(mockGetGameAchievements).toHaveBeenCalledTimes(2);
+    const calledAppIds = mockGetGameAchievements.mock.calls.map((c) => c[1] as number);
+    expect(calledAppIds).toContain(100);
+    expect(calledAppIds).toContain(200);
+    expect(calledAppIds).not.toContain(300);
+  });
 });

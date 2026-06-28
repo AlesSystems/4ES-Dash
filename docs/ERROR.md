@@ -28,6 +28,10 @@ Rules:
 | ERR-0011 | 2026-06-19 | frontend | High | Insights pages (genres, cost-per-hour) don't load — O(N) live Store/SteamSpy fan-out on render | Fixed |
 | ERR-0012 | 2026-06-19 | db | High | History page showed fake (seeded) playtime under a real user's account | Fixed |
 | ERR-0013 | 2026-06-19 | api | Critical | Anonymous visitors served the owner's private data in production (homepage + `/api/profile` + `/api/friends`) | Fixed |
+| ERR-0014 | 2026-06-28 | frontend | High | Dashboard Achievements KPI shows "—" permanently — `recordAchievementUnlocks` fetched all games but `AchievementKpiSection` never passed the real steamId | Fixed |
+| ERR-0015 | 2026-06-28 | frontend | High | Library shows all games as "untouched" when Steam "Game details" privacy hides real playtime (heuristic: all zero + some lastPlayed) | Fixed |
+| ERR-0016 | 2026-06-28 | jobs | High | History week/month filters always empty — snapshot cron only targeted `STEAM_ID` env var, not all onboarded users | Fixed |
+| ERR-0017 | 2026-06-28 | frontend,jobs | High | Re-sync button spins forever: no try/catch on client; unbounded achievement fan-out on server; writes not atomic | Fixed |
 
 **Allowed values**
 
@@ -339,6 +343,96 @@ Copy this block when adding a new entry. Replace every placeholder including the
 **Where else this assumption may be wrong:** Any caller of `getViewerSteamId()` reachable without the auth middleware. The middleware-protected pages (`/library`, `/history`, `/insights/*`, `/friends`, `/game/*`, `/review/*`, `/settings`, `/onboarding`) are safe because anonymous requests are redirected to sign-in before they run; the unprotected surfaces (`/`, `/api/profile`, `/api/friends`) were the leak. Any future public route or API handler that calls `getViewerSteamId()` must explicitly handle the empty-string (anonymous) result.
 
 **Prevented by:** Integration tests that hit each public route unauthenticated and assert no owner data is returned, plus a rule that the middleware matcher and the set of `getViewerSteamId()` callers are reviewed together whenever either changes.
+
+---
+
+## ERR-0014
+
+**Date:** 2026-06-28
+**Module:** frontend
+**Severity:** High
+**Status:** Fixed
+
+**Title:** Dashboard Achievements KPI shows "—" permanently
+
+**Symptom:** `AchievementKpiSection` always rendered `—` (unavailable) because `recordAchievementUnlocks` was called without a valid steamId — the component never received the real user's steamId.
+
+**Root cause:** The KPI section fetched achievements using a placeholder/empty steamId, so the Steam API returned no results and the section fell back to `{ available: false }` on every render.
+
+**Fix:** Passed the session user's steamId through to `AchievementKpiSection` so it fetches the correct player's data.
+
+**Generalized rule:** Any server component that queries user-specific Steam data must receive the authenticated steamId explicitly — never assume a module-level default or placeholder will be replaced at runtime.
+
+**Prevented by:** Unit test that stubs the achievement fetch and asserts the KPI renders a real number when the steamId is set.
+
+---
+
+## ERR-0015
+
+**Date:** 2026-06-28
+**Module:** frontend
+**Severity:** High
+**Status:** Fixed
+
+**Title:** Library shows all games as "untouched" when Steam "Game details" privacy hides real playtime
+
+**Symptom:** Users with Steam's "Game details" privacy set to "Private" saw every game marked "Untouched" and 0 hours, even games they had played extensively.
+
+**Root cause:** The Steam `IPlayerService/GetOwnedGames` endpoint returns `playtime_forever = 0` for all games when the user's "Game details" are private, while `last_played` is still present. The library page treated all zero-playtime games as genuinely untouched.
+
+**Fix:** Added a `playtimeHidden` heuristic: if ALL games have `playtime.total === 0` AND at least one has `lastPlayed !== null`, the profile is privacy-hidden. The library header, controls, and cards degrade gracefully (show `—` instead of "Untouched").
+
+**Generalized rule:** Steam's privacy settings can return structurally valid but semantically misleading data. Any feature that derives state from playtime zero must also consider the privacy-hidden scenario.
+
+**Prevented by:** Unit tests on `LibraryHeader`, `LibraryControls`, and `GameCard` covering the `playtimeHidden` prop.
+
+---
+
+## ERR-0016
+
+**Date:** 2026-06-28
+**Module:** jobs
+**Severity:** High
+**Status:** Fixed
+
+**Title:** History week/month filters always empty — snapshot cron only targeted `STEAM_ID` env var
+
+**Symptom:** The history chart was empty for all non-env-var users, and week/month filters showed no data for any user.
+
+**Root cause:** `runSnapshot()` in `server/jobs/snapshot.ts` only targeted the single `STEAM_ID` env var. When multi-user onboarding was added, the cron job was never updated to fan out to all onboarded users in the database.
+
+**Fix:** Rewrote `runSnapshot()` to build a deduped Set of steamIds (env var + all users with `onboardedAt != null`), run per-user with individual try/catch, and return a `SnapshotBatchResult` with `usersProcessed` and per-user `results[]`.
+
+**Generalized rule:** Any background job that targets "all users" must query the user table, not a single environment variable. Env var fallbacks are for the developer's solo install only.
+
+**Prevented by:** Integration tests that seed a second onboarded user and assert both users get snapshot rows; separate test for dedup when the env var user is also in the DB.
+
+---
+
+## ERR-0017
+
+**Date:** 2026-06-28
+**Module:** frontend, jobs
+**Severity:** High
+**Status:** Fixed
+
+**Title:** Re-sync button spins forever; unbounded achievement fan-out on re-sync; writes not atomic
+
+**Symptoms:**
+1. `ResyncButton` had no try/catch — if `resyncNow()` threw, `isPending` stayed true and the spinner never cleared.
+2. `resyncNow` action called `runOnboardingBackfill` with no achievement limit, causing it to fan out to all owned games (potentially hundreds of Steam API calls) on every manual re-sync.
+3. `runOnboardingBackfill` executed User/Game/OwnedGame/Snapshot writes as separate awaits — a mid-flight failure left partial data with `onboardedAt` unset.
+
+**Root cause:** Three independent gaps: (1) missing error boundary on the client, (2) no per-call limit passed from the resync path, (3) writes never wrapped in a single `$transaction`.
+
+**Fix:**
+1. `ResyncButton` now wraps `await resyncNow()` in try/catch; on catch it sets an error string rendered with `aria-live="polite"`.
+2. `resyncNow` action defines `ACHIEVEMENT_RESYNC_LIMIT = 20` and passes it through `resyncAccount → runOnboardingBackfill → recordAchievementUnlocks`.
+3. All User/Game/OwnedGame/Snapshot writes (plus the `onboardedAt` update) are wrapped in `prisma.$transaction(async (tx) => { ... })`. `recordAchievementUnlocks` stays outside (best-effort).
+
+**Generalized rule:** Client islands that call server actions must always handle rejection — `useTransition` does not catch throws. Long-running background fan-outs must be bounded when called from interactive paths. Multi-table write sequences that must succeed atomically belong in `$transaction`.
+
+**Prevented by:** Unit tests on `ResyncButton` (error message + spinner-cleared); `account-settings` test for achievement limit arg; `onboarding-backfill` test asserting `$transaction` is called with a callback.
 
 ---
 

@@ -12,13 +12,19 @@ import { resyncNow } from './actions';
 
 export function ResyncButton(): JSX.Element {
   const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function handleResync() {
     setDone(false);
+    setError(null);
     startTransition(async () => {
-      await resyncNow();
-      setDone(true);
+      try {
+        await resyncNow();
+        setDone(true);
+      } catch {
+        setError('Re-sync failed — please try again.');
+      }
     });
   }
 
@@ -40,6 +46,11 @@ export function ResyncButton(): JSX.Element {
       {!isPending && done && (
         <span className="flex items-center gap-1.5 text-caption text-text-3" aria-live="polite">
           <Check size={14} strokeWidth={1.75} className="text-success" aria-hidden /> Synced
+        </span>
+      )}
+      {!isPending && error && (
+        <span className="text-caption text-danger" aria-live="polite">
+          {error}
         </span>
       )}
     </div>

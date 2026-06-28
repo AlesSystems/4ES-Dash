@@ -58,11 +58,15 @@ const mockUpsertSnapshot = vi.fn().mockResolvedValue({});
 const mockTransaction = vi.fn().mockImplementation(async (arg: unknown) => {
   if (typeof arg === 'function') {
     const tx = {
-      playtimeSnapshot: { deleteMany: deleteSpies.playtimeSnapshot },
+      playtimeSnapshot: {
+        deleteMany: deleteSpies.playtimeSnapshot,
+        upsert: mockUpsertSnapshot,
+      },
       achievementSnapshot: { deleteMany: deleteSpies.achievementSnapshot },
-      ownedGame: { deleteMany: deleteSpies.ownedGame },
+      ownedGame: { deleteMany: deleteSpies.ownedGame, upsert: mockUpsertOwnedGame },
       manualGameData: { deleteMany: deleteSpies.manualGameData },
       idleDismissal: { deleteMany: deleteSpies.idleDismissal },
+      game: { upsert: mockUpsertGame },
       user: { delete: deleteSpies.userDelete, upsert: mockUpsertUser, update: mockUpdateUser },
     };
     return (arg as (tx: unknown) => Promise<void>)(tx);
@@ -302,7 +306,7 @@ describe('resyncNow action — force re-sync', () => {
     vi.restoreAllMocks();
   });
 
-  it('calls resyncAccount (which calls runOnboardingBackfill with force:true) for the session steamId', async () => {
+  it('returns an OnboardingResult and calls resyncAccount WITH the achievement limit', async () => {
     const mockResyncAccount = vi.fn().mockResolvedValue({ onboarded: true });
     vi.doMock('@/server/auth', () => ({
       getSessionUser: vi.fn().mockResolvedValue({ steamId: STEAM_A }),
@@ -315,10 +319,18 @@ describe('resyncNow action — force re-sync', () => {
     }));
 
     const { resyncNow } = await import('@/app/settings/actions');
-    await resyncNow();
+    const result = await resyncNow();
 
+    // (a) returns a non-void OnboardingResult
+    expect(result).toBeDefined();
+    expect(result).toMatchObject({ onboarded: expect.any(Boolean) });
+
+    // (b) calls resyncAccount with steamId AND a numeric achievement limit
     expect(mockResyncAccount).toHaveBeenCalledOnce();
-    expect(mockResyncAccount).toHaveBeenCalledWith(STEAM_A);
+    const call = mockResyncAccount.mock.calls[0] as [string, number];
+    expect(call[0]).toBe(STEAM_A);
+    expect(typeof call[1]).toBe('number');
+    expect(call[1]).toBeGreaterThan(0);
   });
 
   it('throws when no session user is found', async () => {
@@ -354,6 +366,23 @@ describe('runOnboardingBackfill — force re-sync bypasses onboardedAt guard', (
     mockUpsertOwnedGame.mockResolvedValue({});
     mockUpsertSnapshot.mockResolvedValue({});
     mockUpdateUser.mockResolvedValue({});
+    // Re-apply $transaction implementation (clearAllMocks wipes it)
+    mockTransaction.mockImplementation(async (arg: unknown) => {
+      if (typeof arg === 'function') {
+        const tx = {
+          playtimeSnapshot: { deleteMany: deleteSpies.playtimeSnapshot, upsert: mockUpsertSnapshot },
+          achievementSnapshot: { deleteMany: deleteSpies.achievementSnapshot },
+          ownedGame: { deleteMany: deleteSpies.ownedGame, upsert: mockUpsertOwnedGame },
+          manualGameData: { deleteMany: deleteSpies.manualGameData },
+          idleDismissal: { deleteMany: deleteSpies.idleDismissal },
+          game: { upsert: mockUpsertGame },
+          user: { delete: deleteSpies.userDelete, upsert: mockUpsertUser, update: mockUpdateUser },
+        };
+        return (arg as (tx: unknown) => Promise<void>)(tx);
+      }
+      if (Array.isArray(arg)) return Promise.all(arg as Promise<unknown>[]);
+      return arg;
+    });
   });
 
   afterEach(() => {

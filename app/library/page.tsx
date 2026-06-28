@@ -20,6 +20,7 @@ import { LibraryHeader } from '@/components/library/LibraryHeader';
 import { LibraryControls } from '@/components/library/LibraryControls';
 import { LibraryResults } from '@/components/library/LibraryResults';
 import { LibraryEmpty } from '@/components/library/LibraryEmpty';
+import { PlaytimeHiddenBanner } from '@/components/library/PlaytimeHiddenBanner';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -42,11 +43,13 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
   let profile;
   let games: LibraryGame[];
   let stale = false;
+  let playtimeHidden = false;
 
   try {
     const data = await getProfile(featuredId);
     profile = data.profile;
     stale = data.stale;
+    playtimeHidden = data.playtimeHidden ?? false;
     // Merge snapshot-inferred acquiredAt (#26) so sort=added lights up for games
     // seen since tracking began. getProfile is cached, so this adds one DB query.
     // Degrade to no dates on a DB hiccup — the library still renders (matches the
@@ -113,9 +116,11 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
         totalPlaytimeMinutes={totalPlaytimeMinutes}
         inProgressCount={inProgressCount}
         untouchedCount={untouchedCount}
+        playtimeHidden={playtimeHidden}
       />
 
       {stale ? <StaleBanner className="mb-4" /> : null}
+      {playtimeHidden ? <PlaytimeHiddenBanner /> : null}
 
       <LibraryControls
         sort={sort}
@@ -127,6 +132,7 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
         addedUnavailable={addedUnavailable}
         multiplayer={multiplayer}
         uncategorizedCount={uncategorizedCount}
+        playtimeHidden={playtimeHidden}
       />
 
       <div className="mt-6">
@@ -137,7 +143,12 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
             <LibraryEmpty total={games.length} query={q.length > 0 ? q : undefined} />
           )
         ) : (
-          <LibraryResults key={`${status}-${sort}-${q}`} games={shown} view={view} />
+          <LibraryResults
+            key={`${status}-${sort}-${q}`}
+            games={shown}
+            view={view}
+            playtimeHidden={playtimeHidden}
+          />
         )}
       </div>
     </main>

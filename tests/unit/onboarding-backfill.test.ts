@@ -38,9 +38,23 @@ const mockGroupBySnapshot = vi.fn().mockResolvedValue([]);
 const mockFindManySnapshots = vi.fn().mockResolvedValue([]);
 const mockUpsertSnapshot = vi.fn().mockResolvedValue({});
 const mockUpdateUser = vi.fn().mockResolvedValue({});
-const mockTransaction = vi.fn().mockImplementation((ops: Promise<unknown>[]) =>
-  Promise.all(ops),
-);
+const mockTransaction = vi.fn().mockImplementation(async (cbOrOps: unknown) => {
+  if (typeof cbOrOps === 'function') {
+    const tx = {
+      user: { upsert: mockUpsertUser, update: mockUpdateUser },
+      game: { upsert: mockUpsertGame },
+      ownedGame: { upsert: mockUpsertOwnedGame },
+      playtimeSnapshot: {
+        upsert: mockUpsertSnapshot,
+        findFirst: mockFindFirstSnapshot,
+        findMany: mockFindManySnapshots,
+        groupBy: mockGroupBySnapshot,
+      },
+    };
+    return (cbOrOps as (tx: unknown) => Promise<unknown>)(tx);
+  }
+  return Promise.all(cbOrOps as Promise<unknown>[]);
+});
 const mockFindUniqueUser = vi.fn();
 
 vi.mock('@/server/db', () => ({
@@ -278,5 +292,57 @@ describe('runOnboardingBackfill — invalid steamId', () => {
     const { MissingSteamIdError } = await import('@/server/repositories/require-steam-id');
     const { runOnboardingBackfill } = await import('@/server/jobs/onboarding-backfill');
     await expect(runOnboardingBackfill('')).rejects.toThrow(MissingSteamIdError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AC4 (bug-04): atomic $transaction boundary
+// ---------------------------------------------------------------------------
+
+describe('runOnboardingBackfill — $transaction boundary (bug-04)', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    mockFindUniqueUser.mockResolvedValue(null);
+    mockGroupBySnapshot.mockResolvedValue([]);
+    mockFindManySnapshots.mockResolvedValue([]);
+  });
+
+  it('wraps the User/Game/OwnedGame/Snapshot writes in a single prisma.$transaction callback', async () => {
+    // Explicitly restore getProfile to the real MSW-backed repo after private-profile
+    // tests left a vi.doMock override in the registry.
+    vi.doMock('@/server/repositories/profile', async () => {
+      const real = await vi.importActual('@/server/repositories/profile');
+      return real;
+    });
+
+    // Update mockTransaction to handle callback form.
+    mockTransaction.mockImplementation(async (cb: unknown) => {
+      if (typeof cb === 'function') {
+        const tx = {
+          user: { upsert: mockUpsertUser, update: mockUpdateUser },
+          game: { upsert: mockUpsertGame },
+          ownedGame: { upsert: mockUpsertOwnedGame },
+          playtimeSnapshot: {
+            upsert: mockUpsertSnapshot,
+            findFirst: mockFindFirstSnapshot,
+            findMany: mockFindManySnapshots,
+            groupBy: mockGroupBySnapshot,
+          },
+        };
+        return (cb as (tx: unknown) => Promise<unknown>)(tx);
+      }
+      // array form (legacy) — keep backward compat
+      return Promise.all(cb as Promise<unknown>[]);
+    });
+
+    const { runOnboardingBackfill } = await import('@/server/jobs/onboarding-backfill');
+    const result = await runOnboardingBackfill(TEST_STEAM_ID);
+
+    expect(result).toEqual({ onboarded: true });
+    // $transaction must have been called with a function (callback form)
+    expect(mockTransaction).toHaveBeenCalled();
+    const firstArg = mockTransaction.mock.calls[0]?.[0];
+    expect(typeof firstArg).toBe('function');
   });
 });
