@@ -7,7 +7,12 @@
 
 import { prisma } from '@/server/db';
 import { requireSteamId } from '@/server/repositories/require-steam-id';
-import { detectIdleSpikes, DEFAULT_IDLE_THRESHOLD_MINUTES, type IdleFlag } from '@/lib/insights';
+import {
+  detectIdleSpikes,
+  DEFAULT_IDLE_THRESHOLD_MINUTES,
+  IDLE_LOOKBACK_DAYS,
+  type IdleFlag,
+} from '@/lib/insights';
 
 export interface IdleFlagView {
   appId: number;
@@ -29,9 +34,14 @@ export async function getIdleFlags(
 ): Promise<IdleFlagView[]> {
   const id = requireSteamId(steamId, 'getIdleFlags');
 
+  // Date-bound the scan so the @@index([steamId, date]) is used instead of an
+  // unbounded full-table steamId scan. Reads the last IDLE_LOOKBACK_DAYS of
+  // day-keyed snapshots — enough for a full year of idle-window detection.
+  const since = new Date(Date.now() - IDLE_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+
   const [snapshotRows, dismissalRows] = await Promise.all([
     prisma.playtimeSnapshot.findMany({
-      where: { steamId: id },
+      where: { steamId: id, date: { gte: since } },
       select: { appId: true, date: true, playtimeForever: true },
     }),
     prisma.idleDismissal.findMany({

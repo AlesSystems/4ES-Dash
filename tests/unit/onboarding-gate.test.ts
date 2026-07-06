@@ -144,6 +144,31 @@ describe('getOnboardingStatus — session exists, onboardedAt set', () => {
   });
 });
 
+describe('getOnboardingStatus — passed-through session (de-dupe)', () => {
+  it('uses a passed session and does NOT call getSessionUser again', async () => {
+    mockFindUniqueUser.mockResolvedValue({ steamId: TEST_STEAM_ID, onboardedAt: null });
+
+    const { getOnboardingStatus } = await import('@/server/onboarding-gate');
+    const status = await getOnboardingStatus({ steamId: TEST_STEAM_ID });
+
+    expect(status).toBe('not-onboarded');
+    // The duplicate waterfall is gone: no fresh session lookup when one is passed.
+    expect(mockGetSessionUser).not.toHaveBeenCalled();
+    expect(mockFindUniqueUser).toHaveBeenCalledWith({
+      where: { steamId: TEST_STEAM_ID },
+      select: { onboardedAt: true },
+    });
+  });
+
+  it('returns "no-session" when passed null explicitly', async () => {
+    const { getOnboardingStatus } = await import('@/server/onboarding-gate');
+    const status = await getOnboardingStatus(null);
+    expect(status).toBe('no-session');
+    expect(mockGetSessionUser).not.toHaveBeenCalled();
+    expect(mockFindUniqueUser).not.toHaveBeenCalled();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // 4. Only selects onboardedAt — no extra DB columns read
 // ---------------------------------------------------------------------------

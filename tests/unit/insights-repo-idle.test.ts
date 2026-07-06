@@ -85,6 +85,16 @@ describe('getIdleFlags', () => {
     const flags = await getIdleFlags(STEAM_ID);
     expect(flags[0]!.name).toBe('App 999');
   });
+
+  it('date-bounds the playtimeSnapshot scan so @@index([steamId, date]) is usable', async () => {
+    mockPrisma.playtimeSnapshot.findMany.mockResolvedValue([]);
+    await getIdleFlags(STEAM_ID);
+    const call = mockPrisma.playtimeSnapshot.findMany.mock.calls[0]![0]!;
+    expect(call.where.steamId).toBe(STEAM_ID);
+    // The scan must be date-bounded (not an unbounded full-table steamId scan).
+    expect(call.where.date).toBeDefined();
+    expect(call.where.date.gte).toBeInstanceOf(Date);
+  });
 });
 
 describe('dismissIdleFlag', () => {

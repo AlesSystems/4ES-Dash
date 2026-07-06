@@ -68,6 +68,21 @@ describe('getYearInReview', () => {
     expect(unknown?.name).toBe('App 999');
   });
 
+  it('date-bounds the playtimeSnapshot scan to the review year so @@index([steamId, date]) is usable', async () => {
+    mockPrisma.playtimeSnapshot.findMany.mockResolvedValue([]);
+    mockPrisma.achievementUnlock.findMany.mockResolvedValue([]);
+    mockPrisma.game.findMany.mockResolvedValue([]);
+    await getYearInReview('76561198000000000', 2025);
+    const call = mockPrisma.playtimeSnapshot.findMany.mock.calls[0]![0]!;
+    expect(call.where.steamId).toBe('76561198000000000');
+    // The playtime scan must be date-bounded to the review year window.
+    expect(call.where.date).toBeDefined();
+    expect(call.where.date.gte).toBeInstanceOf(Date);
+    expect(call.where.date.gte.getUTCFullYear()).toBe(2025);
+    expect(call.where.date.lt).toBeInstanceOf(Date);
+    expect(call.where.date.lt.getUTCFullYear()).toBe(2026);
+  });
+
   it('counts achievementsUnlocked from unlock EVENTS, not snapshot deltas (#91)', async () => {
     // The regression case: a single day of playtime data (no snapshot history),
     // but several real unlock events in the year — the old delta logic returned 0.

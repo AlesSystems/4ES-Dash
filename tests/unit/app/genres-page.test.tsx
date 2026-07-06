@@ -39,8 +39,10 @@ vi.mock('@/server/onboarding-gate', () => ({
 }));
 
 const mockGetViewerSteamId = vi.fn().mockResolvedValue('76561198000000001');
+const mockGetSessionUser = vi.fn().mockResolvedValue({ steamId: '76561198000000001' });
 vi.mock('@/server/auth', () => ({
-  getViewerSteamId: () => mockGetViewerSteamId(),
+  getViewerSteamId: (...args: unknown[]) => mockGetViewerSteamId(...args),
+  getSessionUser: () => mockGetSessionUser(),
 }));
 
 const mockGetGenreBreakdown = vi.fn();
@@ -57,7 +59,7 @@ vi.mock('@/components/insights/GenreChart', () => ({
 // Imports (AFTER vi.mock declarations)
 // ---------------------------------------------------------------------------
 
-import GenresPage from '@/app/insights/genres/page';
+import GenresPage, { GenreBreakdownSection } from '@/app/insights/genres/page';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -125,14 +127,16 @@ describe('GenresPage – onboarded user with games', () => {
   });
 
   it('renders genre slices without a manual re-sync', async () => {
-    render(await GenresPage());
+    // The slow breakdown now streams behind <Suspense>; assert on the awaited
+    // async section directly (jsdom cannot resolve an async child in-tree).
+    render(await GenreBreakdownSection({ viewerId: '76561198000000001' }));
     expect(screen.getByText('Action')).toBeInTheDocument();
     expect(screen.getByText('RPG')).toBeInTheDocument();
     expect(mockRedirect).not.toHaveBeenCalled();
   });
 
   it('does NOT render "No genre data yet"', async () => {
-    render(await GenresPage());
+    render(await GenreBreakdownSection({ viewerId: '76561198000000001' }));
     expect(screen.queryByText(/No genre data yet/i)).not.toBeInTheDocument();
   });
 });
@@ -148,7 +152,7 @@ describe('GenresPage – onboarded user with a genuinely empty library', () => {
   });
 
   it('renders "No genre data yet"', async () => {
-    render(await GenresPage());
+    render(await GenreBreakdownSection({ viewerId: '76561198000000001' }));
     expect(screen.getByText(/No genre data yet/i)).toBeInTheDocument();
     expect(mockRedirect).not.toHaveBeenCalled();
   });
@@ -165,7 +169,9 @@ describe('GenresPage – no session (dev/featured fallback)', () => {
   });
 
   it('renders the breakdown without redirecting', async () => {
-    render(await GenresPage());
+    // no-session gate path is exercised in AC1; here we assert the section
+    // renders its data (the page shell does not redirect on 'no-session').
+    render(await GenreBreakdownSection({ viewerId: '76561198000000001' }));
     expect(screen.getByText('Action')).toBeInTheDocument();
     expect(mockRedirect).not.toHaveBeenCalled();
   });
