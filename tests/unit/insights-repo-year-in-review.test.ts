@@ -49,7 +49,13 @@ describe('getYearInReview', () => {
     mockPrisma.achievementUnlock.findMany.mockResolvedValue([]);
     mockPrisma.game.findMany.mockResolvedValue([]);
     const result = await getYearInReview('76561198000000000', 2025);
-    expect(result).toEqual({ year: 2025, totalMinutes: 0, topGames: [], achievementsUnlocked: 0 });
+    expect(result).toEqual({
+      year: 2025,
+      totalMinutes: 0,
+      topGames: [],
+      achievementsUnlocked: 0,
+      partialYear: false,
+    });
   });
 
   it('uses game name from DB and App fallback', async () => {
@@ -66,6 +72,33 @@ describe('getYearInReview', () => {
     const unknown = result.topGames.find((g) => g.appId === 999);
     expect(cs2?.name).toBe('Counter-Strike 2');
     expect(unknown?.name).toBe('App 999');
+  });
+
+  it('reaches back to the pre-year baseline snapshot for playtime gain (ERR-0019)', async () => {
+    // The repository must fetch the last snapshot strictly before Jan 1 so the
+    // year's gain is (in-year max) − (pre-year baseline), not the in-year spread.
+    mockPrisma.playtimeSnapshot.findMany.mockResolvedValue([
+      { appId: 730, date: new Date('2024-12-31T00:00:00.000Z'), playtimeForever: 100 },
+      { appId: 730, date: new Date('2025-01-05T00:00:00.000Z'), playtimeForever: 200 },
+      { appId: 730, date: new Date('2025-12-20T00:00:00.000Z'), playtimeForever: 350 },
+    ]);
+    mockPrisma.achievementUnlock.findMany.mockResolvedValue([]);
+    mockPrisma.game.findMany.mockResolvedValue([{ appId: 730, name: 'Counter-Strike 2' }]);
+    const result = await getYearInReview('76561198000000000', 2025);
+    expect(result.totalMinutes).toBe(250); // 350 − 100, not 150
+    expect(result.partialYear).toBe(false);
+  });
+
+  it('flags partial-year when a game has no pre-year baseline', async () => {
+    mockPrisma.playtimeSnapshot.findMany.mockResolvedValue([
+      { appId: 730, date: new Date('2025-03-01T00:00:00.000Z'), playtimeForever: 200 },
+      { appId: 730, date: new Date('2025-12-01T00:00:00.000Z'), playtimeForever: 350 },
+    ]);
+    mockPrisma.achievementUnlock.findMany.mockResolvedValue([]);
+    mockPrisma.game.findMany.mockResolvedValue([{ appId: 730, name: 'Counter-Strike 2' }]);
+    const result = await getYearInReview('76561198000000000', 2025);
+    expect(result.totalMinutes).toBe(150);
+    expect(result.partialYear).toBe(true);
   });
 
   it('counts achievementsUnlocked from unlock EVENTS, not snapshot deltas (#91)', async () => {

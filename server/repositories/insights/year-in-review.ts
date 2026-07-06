@@ -47,6 +47,25 @@ export async function getYearInReview(steamId: string, year: number): Promise<Ye
     }),
   ]);
 
+  // Prior-year baseline (ERR-0019): playtime is a cumulative monotonic counter,
+  // so the year's gain is (in-year max) − (last snapshot strictly before Jan 1).
+  // Derive that floor per app from the already-fetched rows — collapse rows dated
+  // before the UTC year boundary to the latest value seen for each app. Apps with
+  // no pre-year snapshot are absent, which makes computeYearInReview flag the
+  // partial-year caveat rather than fabricate a floor.
+  const yearStartMs = Date.UTC(year, 0, 1, 0, 0, 0, 0);
+  const baselineByApp = new Map<number, number>();
+  const baselineDate = new Map<number, number>();
+  for (const row of playtimeRows) {
+    const t = row.date.getTime();
+    if (t >= yearStartMs) continue;
+    const seen = baselineDate.get(row.appId);
+    if (seen === undefined || t >= seen) {
+      baselineDate.set(row.appId, t);
+      baselineByApp.set(row.appId, row.playtimeForever);
+    }
+  }
+
   // Names are only needed for the playtime-driven topGames list.
   const appIds = Array.from(new Set(playtimeRows.map((r) => r.appId)));
 
@@ -57,5 +76,5 @@ export async function getYearInReview(steamId: string, year: number): Promise<Ye
 
   const names = new Map<number, string>(gameRecords.map((g) => [g.appId, g.name]));
 
-  return computeYearInReview(year, playtimeRows, unlockRows, names);
+  return computeYearInReview(year, playtimeRows, unlockRows, names, baselineByApp);
 }
