@@ -8,11 +8,13 @@ critical bugs in the deployed (Vercel) 4ES dashboard. It is **documentation only
 
 ## Layout
 
-| File | Purpose |
+| Path | Purpose |
 |---|---|
-| `00-investigation-loop.md` | The investigation **loop prompt** — route, contract, per‑bug briefs, the runnable Workflow script, schemas, and stop rules. Phase 1 (Investigate). |
-| `bug-0N-*.md` | One investigation report per bug, rendered from the loop's validated structured output. Created when the loop runs. |
-| `SUMMARY.md` | Cross‑bug synthesis + planning hand‑off. Created after the loop runs. |
+| `SUMMARY.md` | Batch‑1 cross‑bug synthesis + planning hand‑off. |
+| `PLAN.md` | Planning artifact for the active batch. |
+| `evidence/` | **Batch 2** (bugs 1–5): investigation reports (`reports/`), adversarial verification receipts (`verification/`), and the implementation ship‑readiness receipt. See [evidence/README.md](evidence/README.md). |
+| `archive/` | **Batch 1** (bugs 01–04): original investigation reports and fix plans. `SUMMARY.md` links refer to these files. |
+| `optimization/` | **Performance workstream** ("app is slow"): scout-phase findings in [optimization/FINDINGS.md](optimization/FINDINGS.md); investigation loop to follow. |
 
 ## Phases (one workflow per phase, run in sequence)
 
