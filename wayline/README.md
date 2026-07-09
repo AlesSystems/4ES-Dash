@@ -14,7 +14,7 @@ critical bugs in the deployed (Vercel) 4ES dashboard. It is **documentation only
 | `PLAN.md` | Planning artifact for the active batch. |
 | `evidence/` | **Batch 2** (bugs 1–5): investigation reports (`reports/`), adversarial verification receipts (`verification/`), and the implementation ship‑readiness receipt. See [evidence/README.md](evidence/README.md). |
 | `archive/` | **Batch 1** (bugs 01–04): original investigation reports and fix plans. `SUMMARY.md` links refer to these files. |
-| `optimization/` | **Performance workstream** ("app is slow"): scout-phase findings in [optimization/FINDINGS.md](optimization/FINDINGS.md); investigation loop to follow. |
+| `optimization/` | **Performance workstream** ("app is slow"): scout-phase findings in [optimization/FINDINGS.md](optimization/FINDINGS.md); **investigation loop complete** — per-theme root-cause reports in [optimization/investigation/](optimization/investigation/), adversarial receipts in [optimization/verification/](optimization/verification/), synthesis in [investigation/SUMMARY.md](optimization/investigation/SUMMARY.md) (27/27 IDs adjudicated: 16 confirmed, 9 plausible-gated, 2 refuted). Awaiting human gate to planning. |
 
 ## Phases (one workflow per phase, run in sequence)
 
