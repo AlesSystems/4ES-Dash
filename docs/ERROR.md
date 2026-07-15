@@ -37,6 +37,7 @@ Rules:
 | ERR-0020 | 2026-07-06 | frontend,db | High | Insights pages slow: whole page blocks on slowest await; duplicate getSessionUser waterfall on genres; unbounded PlaytimeSnapshot scans bypassed `@@index([steamId, date])` | Fixed |
 | ERR-0021 | 2026-07-15 | frontend | High | First paint of every route gated on the un-suspended shell — 3 limiter-serialized Steam calls (~500 ms cold floor, +5.25 s on a transient) blocked document flush | Fixed |
 | ERR-0022 | 2026-07-15 | frontend,db | High | `/library?multiplayer=1` recomputed slow-changing Store reference data live on the request path — one `appdetails` call per owned game, limiter-serialized (~16.3 s cold @ N=65, linear in library size) | Fixed |
+| ERR-0023 | 2026-07-15 | db,frontend | High | Insights/history read paths issued unbounded steamId-only snapshot scans (composite indexes never pruned) and recomputed every aggregate per request; post-merge, the bounded YiR scan silently starved bug-2's pre-year baseline | Fixed |
 
 **Allowed values**
 
@@ -553,6 +554,27 @@ Part (a) — moving the flag-gated SteamSpy-tag enrichment off the render path i
 **Where else this assumption may be wrong:** STEAM-2's durable per-user achievement-totals precompute remains a **deferred, currently-unowned residual** (this lane shipped only the cheap TTL right-sizing; the nightly aggregate mirroring `LibraryValueAggregate` is not owned by any theme — recorded here so it cannot be silently dropped). Limiter partitioning (STEAM-4) is explicitly deferred to Phase 6 with the instance-concurrency measurement. First post-deploy nightly run populates `categoryIds` — until then all games are "uncategorized" (designed state); run the guarded cron once manually after deploy.
 
 **Prevented by:** Tripwire tests — Store call count unchanged in the job (`tests/unit/game-store.test.ts`), zero Store calls in the reader on every integration test, `stale === false` pinned; the ERR-0010/0011 suites green throughout.
+
+---
+
+### ERR-0023 — Unbounded snapshot scans, uncached insights aggregates, and the merge-latent baseline starvation
+
+**Date:** 2026-07-15
+**Module:** db, frontend
+**Severity:** High
+**Status:** Fixed
+
+**Symptom:** Every `/insights/*`, `/review/[year]`, and `/history` visit re-scanned the user's **entire lifetime snapshot partition** and re-ran the JS aggregation from scratch: `getAvailableReviewYears` hydrated one row per snapshot to derive ≤ ~6 integers; `getYearInReview` scanned all unlock events ever recorded; `/history` fetched all history to render a 53-week chart. Costs grow monotonically with account age. Separately, the bug-2+bug-3 take-both merge left a latent regression: bug-3's `{gte,lt}` year bound excluded every pre-year row, so bug-2's in-memory baseline derivation (ERR-0019) always came up empty — every review year silently read `partialYear` with a first-in-year floor.
+
+**Root cause:** Snapshot-reading queries passed no `date`/`unlockedAt` bound, so the existing composite indexes (`@@index([steamId, date])`, `@@index([steamId, unlockedAt])`) never pruned (the DATA-7 "missing index" finding dissolved on inspection — the indexes existed; the queries were the defect). No insights aggregate was cached (exactly one `cache(` existed in the insights repositories, and it was the inner SteamSpy lookup). The baseline starvation was a semantic interaction invisible to both branches' own test suites, whose mocks fed pre-year rows through a single mocked query that the real bounded scan would never return.
+
+**Fix (Theme 1, `wayline/optimization/plan/PLAN-theme-1-snapshot-reads.md`):** (T1) main YiR scan keeps bug-3's full `{gte,lt}` bound; `baselineByApp` now comes from its **own bounded fetch** (`groupBy` `lt: yearStart` + keyed read, ≤ 1 row per app) — byte-identical to bug-2's full-history semantics; unlock scan bounded by `unlockedAt`. (T2) `getAvailableReviewYears` uses DB-side `distinct: ['date']` (hydration win everywhere; SQL-transfer win on Postgres). (T3) bug-3's shipped idle bound adopted, verification-only; window-edge margin question handed to bug-3's lane (`wayline/optimization/handoffs/idle-margin-bug3-lane.md`). (T4) `/history` fetches only the rendered window (53 w / 25 mo, `since` floored to the bucket boundary), with an existence probe distinguishing "no data ever" from "no data in window". (T5) every aggregate cached under the single new `TTL.insightsAggregate` (6 h) key with threshold/year/window discriminators; idle dismissals outside the cache.
+
+**Generalized rule:** Never issue a steamId-only `findMany` on an append-only snapshot table — always pass the rendering window so composite indexes prune; when a computation needs context beyond its window (a baseline), fetch it with its own bounded query rather than unbounding the main scan; cache the bounded aggregate (bound+cache are complements — caching alone hides full scans until every cold start); and when a window empties a result, distinguish "no data ever" from "no data in window" before choosing empty-state copy. Test mocks must answer faithfully to the query's captured bounds — a mock that returns rows the real query can't see will mask exactly this class of regression.
+
+**Where else this assumption may be wrong:** Any future reader of `PlaytimeSnapshot`/`AchievementSnapshot`/`AchievementUnlock` (the rule is now in docs/BACKEND.md "Bounded snapshot reads"); nightly-precompute escalation stays available if the `db-rowcount` gated check ever shows multi-second bounded scans. Cross-refs: ERR-0019 (baseline semantics preserved), ERR-0020 (bug-3's bounds adopted), ERR-0010/0011 (precompute lineage).
+
+**Prevented by:** Mock-capture tests pinning every bound (`{gte,lt}` + separate baseline fetch, `unlockedAt` window, `distinct`, windowed `since` + flooring); the faithful two-query mock in `tests/unit/insights-repo-year-in-review.test.ts` (pre-year rows reachable only via the baseline path); bucket-completeness test (red if `since` is unfloored); `tests/unit/insights-cache.test.ts` (warm-cache zero-Prisma, key isolation incl. threshold, dismissal immediacy, SWR preserved); bug-1/2/3 suites green throughout.
 
 ---
 

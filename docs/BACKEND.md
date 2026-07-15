@@ -145,6 +145,25 @@ Two new Prisma models added in migration `prisma/migrations/20260617101604_phase
 - **Single-flight (#85):** N concurrent misses on the same key collapse onto ONE loader invocation (an `inFlight` promise map). Joiners await the leader's result; SWR is preserved (a failed shared load returns the prior value as `stale`, or rethrows when there is no prior value). `clearCache()` resets both the store and the in-flight map.
 - Invalidation on writes uses `revalidateTag` for RSC and explicit `cache.del(key)` for the API.
 
+### Insights aggregate caching (ERR-0023)
+
+Every insights aggregate is wrapped in `cache(cacheKey(...), TTL.insightsAggregate, loader)` — 6 h against nightly-written snapshot data, so max staleness is under one snapshot cycle. Keys (all via `cacheKey`):
+
+| Key | Discriminators |
+| --- | --- |
+| `steam:insights-idle:<steamId>:<thresholdMinutes>` | threshold resolved to its default **before** keying, so omitted and explicit-default calls share one entry |
+| `steam:insights-year-in-review:<steamId>:<year>` | year |
+| `steam:insights-review-years:<steamId>` | — |
+| `steam:insights-cost-per-hour:<steamId>` | — |
+| `steam:insights-genres:<steamId>` | outer wrap only; the inner per-appId SteamSpy cache entry is separate and unchanged |
+| `steam:history-snapshots:<steamId>:<epochMs>` | bucket-floored window start (`historyWindowStart`), so each rendered window has a stable key |
+
+Design rules: only the expensive snapshot→aggregate stage sits inside the cache — per-request concerns (idle **dismissal** filtering, game-name lookups) run outside it, so a dismissal is visible on the very next request with no invalidation machinery. Ad-hoc resync can leave cost/genre insights up to 6 h stale until TTL expiry — accepted degradation; explicit invalidation-on-sync is a follow-up if it bites. Cache tests must call `clearCache()` in `beforeEach` or warm hits break Prisma call-count assertions.
+
+### Bounded snapshot reads (ERR-0023)
+
+Never issue a steamId-only `findMany` against an append-only snapshot table — always pass the window the surface actually renders, so the composite indexes (`@@index([steamId, date])`, `@@index([steamId, unlockedAt])`) prune. When a computation needs historical context beyond its window — like Year-in-Review's pre-year baseline (ERR-0019) — fetch it with its **own bounded query** (`groupBy` + keyed read, ≤1 row per app); never unbound the main scan to smuggle the context in. When a windowed read comes back empty, distinguish "no data ever" from "no data in window" (cheap existence probe) before choosing empty-state copy.
+
 ### Rate limiters (#85)
 
 `lib/steam/limiter.ts` exports two **separate** token buckets (1 req / 250 ms each):
