@@ -21,6 +21,18 @@ vi.mock('@/server/auth', () => ({
   getViewerSteamId: vi.fn().mockResolvedValue('76561198000000000'),
 }));
 
+const mockRedirect = vi.fn((_url: string) => {
+  throw new Error('NEXT_REDIRECT');
+});
+vi.mock('next/navigation', () => ({
+  redirect: (url: string) => mockRedirect(url),
+}));
+
+const mockGetOnboardingStatus = vi.fn();
+vi.mock('@/server/onboarding-gate', () => ({
+  getOnboardingStatus: () => mockGetOnboardingStatus(),
+}));
+
 // getPlaytimeSnapshots is mocked per-test.
 const mockGetPlaytimeSnapshots = vi.fn();
 vi.mock('@/server/repositories/snapshots', () => ({
@@ -31,6 +43,9 @@ import HistoryPage from '@/app/history/page';
 
 beforeEach(() => {
   mockGetPlaytimeSnapshots.mockReset();
+  mockRedirect.mockClear();
+  // Default to onboarded so existing empty-state cases exercise the page body.
+  mockGetOnboardingStatus.mockResolvedValue('onboarded');
 });
 
 /** Minimal snapshot row shape sufficient for aggregatePlaytime. */
@@ -65,5 +80,34 @@ describe('HistoryPage — empty states (bug-03)', () => {
     expect(screen.getByTestId('chart')).toBeInTheDocument();
     expect(screen.queryByText(/No history yet/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/History is still building/i)).not.toBeInTheDocument();
+  });
+
+  it('(4) renders the chart for 3 daily rows inside ONE ISO week (period-cliff fix)', async () => {
+    // bug-1: short-span data used to collapse to a single point and hit the
+    // "still building" empty state. It must now draw a chart.
+    mockGetPlaytimeSnapshots.mockResolvedValue([
+      makeRow(new Date(Date.UTC(2024, 0, 1)), 100),
+      makeRow(new Date(Date.UTC(2024, 0, 2)), 160),
+      makeRow(new Date(Date.UTC(2024, 0, 3)), 250),
+    ]);
+    render(await HistoryPage({ searchParams: {} }));
+    expect(screen.getByTestId('chart')).toBeInTheDocument();
+    expect(screen.queryByText(/History is still building/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('HistoryPage — onboarding gate (bug-1)', () => {
+  it('redirects a not-onboarded viewer to /onboarding', async () => {
+    mockGetOnboardingStatus.mockResolvedValue('not-onboarded');
+    mockGetPlaytimeSnapshots.mockResolvedValue([]);
+    await expect(HistoryPage({ searchParams: {} })).rejects.toThrow('NEXT_REDIRECT');
+    expect(mockRedirect).toHaveBeenCalledWith('/onboarding');
+  });
+
+  it('does not fetch snapshots before redirecting a not-onboarded viewer', async () => {
+    mockGetOnboardingStatus.mockResolvedValue('not-onboarded');
+    mockGetPlaytimeSnapshots.mockResolvedValue([]);
+    await expect(HistoryPage({ searchParams: {} })).rejects.toThrow('NEXT_REDIRECT');
+    expect(mockGetPlaytimeSnapshots).not.toHaveBeenCalled();
   });
 });

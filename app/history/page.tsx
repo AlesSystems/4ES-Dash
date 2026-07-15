@@ -9,8 +9,10 @@
  * next/dynamic, so Tremor is NOT part of the page's initial JS bundle.
  */
 
+import { redirect } from 'next/navigation';
 import { getPlaytimeSnapshots } from '@/server/repositories/snapshots';
 import { getViewerSteamId } from '@/server/auth';
+import { getOnboardingStatus } from '@/server/onboarding-gate';
 import { aggregatePlaytime, type Bucket } from '@/lib/history/aggregate';
 import { HistoryToggle } from '@/components/history/HistoryToggle';
 import { PlaytimeChart } from '@/components/history/PlaytimeChart';
@@ -38,6 +40,15 @@ function parseBucket(raw: string | undefined): Bucket {
 
 export default async function HistoryPage({ searchParams }: HistoryPageProps) {
   const bucket = parseBucket(searchParams.bucket);
+
+  // Gate on onboarding (ERR-0008 pattern): a signed-in user who has never run
+  // the backfill has no snapshot rows yet. Showing them "No history yet" is
+  // misleading — send them to /onboarding instead. Cheap single-column read;
+  // no Steam fan-out on the render path.
+  const onboarding = await getOnboardingStatus();
+  if (onboarding === 'not-onboarded') {
+    redirect('/onboarding');
+  }
 
   const featuredId = await getViewerSteamId();
   const rows = await getPlaytimeSnapshots(featuredId);

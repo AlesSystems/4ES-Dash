@@ -32,6 +32,7 @@ Rules:
 | ERR-0015 | 2026-06-28 | frontend | High | Library shows all games as "untouched" when Steam "Game details" privacy hides real playtime (heuristic: all zero + some lastPlayed) | Fixed |
 | ERR-0016 | 2026-06-28 | jobs | High | History week/month filters always empty — snapshot cron only targeted `STEAM_ID` env var, not all onboarded users | Fixed |
 | ERR-0017 | 2026-06-28 | frontend,jobs | High | Re-sync button spins forever: no try/catch on client; unbounded achievement fan-out on server; writes not atomic | Fixed |
+| ERR-0018 | 2026-07-06 | frontend | Medium | History page empty until snapshots span ≥2 week/month periods — single-period spans collapsed to 1 point and were discarded; page not onboarding-gated | Fixed |
 
 **Allowed values**
 
@@ -433,6 +434,31 @@ Copy this block when adding a new entry. Replace every placeholder including the
 **Generalized rule:** Client islands that call server actions must always handle rejection — `useTransition` does not catch throws. Long-running background fan-outs must be bounded when called from interactive paths. Multi-table write sequences that must succeed atomically belong in `$transaction`.
 
 **Prevented by:** Unit tests on `ResyncButton` (error message + spinner-cleared); `account-settings` test for achievement limit arg; `onboarding-backfill` test asserting `$transaction` is called with a callback.
+
+---
+
+## ERR-0018
+
+**Date:** 2026-07-06
+**Module:** frontend
+**Severity:** Medium
+**Status:** Fixed
+
+**Title:** History page empty until snapshots span ≥2 week/month periods (the period cliff)
+
+**Symptoms:**
+1. A user with real recent play (e.g. 3 daily snapshots inside one ISO week) saw the "History is still building" empty state instead of a chart, even though play clearly happened.
+2. A signed-in-but-not-onboarded user (no snapshot rows) landed on "No history yet" instead of being routed to onboarding.
+
+**Root cause:** `aggregatePlaytime` (`lib/history/aggregate.ts`) bucketed only by ISO week or calendar month; a span that fell inside a single period produced exactly one point. `app/history/page.tsx` then discarded any `< 2`-point series as the empty state, so any short span (and every span inside one week/month) hit the cliff. Separately, the page did not gate on onboarding status like the genres page (ERR-0008), so a not-onboarded user saw a misleading empty state rather than `/onboarding`.
+
+**Fix:**
+1. `aggregatePlaytime` now falls back to **day-granularity** points when the requested week/month bucket collapses to `< 2` points and there are ≥2 distinct snapshot days. Day deltas are computed as `max(0, cumulative[day] − cumulative[prevDay])` per game (cumulative playtime is snapshotted ~once/day, so within-day MAX−MIN is 0), zero-filled across the day range. The summed minutes equal the bucketed total — no fabrication.
+2. `app/history/page.tsx` calls `getOnboardingStatus()` and `redirect('/onboarding')` for a `not-onboarded` viewer, before any snapshot read (ERR-0008 pattern).
+
+**Generalized rule:** A time-series aggregation whose UI requires ≥2 points must not let its bucket granularity be coarser than the data's own cadence — provide a finer-grained fallback for short spans so real activity is always drawable, and reserve the empty state for genuinely absent data. Any "my data" page that can render an empty state must first distinguish "not onboarded" (→ `/onboarding`) from "onboarded but empty" (ERR-0008).
+
+**Prevented by:** Data-layer unit tests in `tests/unit/history-aggregate.test.ts` (single-week and single-month spans yield ≥2 points with the total preserved) and page tests in `tests/unit/app/history-empty-state.test.tsx` (3 daily rows in one ISO week render a chart; not-onboarded viewer redirects to `/onboarding` without fetching snapshots).
 
 ---
 
