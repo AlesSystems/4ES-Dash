@@ -33,6 +33,7 @@ Rules:
 | ERR-0016 | 2026-06-28 | jobs | High | History week/month filters always empty — snapshot cron only targeted `STEAM_ID` env var, not all onboarded users | Fixed |
 | ERR-0017 | 2026-06-28 | frontend,jobs | High | Re-sync button spins forever: no try/catch on client; unbounded achievement fan-out on server; writes not atomic | Fixed |
 | ERR-0018 | 2026-07-06 | frontend | Medium | History page empty until snapshots span ≥2 week/month periods — single-period spans collapsed to 1 point and were discarded; page not onboarding-gated | Fixed |
+| ERR-0019 | 2026-07-06 | backend | High | Year-in-Review zeroes/under-counts current-year hours — playtime gain derived from the in-year (max − min) spread with no pre-year baseline | Fixed |
 
 **Allowed values**
 
@@ -459,6 +460,27 @@ Copy this block when adding a new entry. Replace every placeholder including the
 **Generalized rule:** A time-series aggregation whose UI requires ≥2 points must not let its bucket granularity be coarser than the data's own cadence — provide a finer-grained fallback for short spans so real activity is always drawable, and reserve the empty state for genuinely absent data. Any "my data" page that can render an empty state must first distinguish "not onboarded" (→ `/onboarding`) from "onboarded but empty" (ERR-0008).
 
 **Prevented by:** Data-layer unit tests in `tests/unit/history-aggregate.test.ts` (single-week and single-month spans yield ≥2 points with the total preserved) and page tests in `tests/unit/app/history-empty-state.test.tsx` (3 daily rows in one ISO week render a chart; not-onboarded viewer redirects to `/onboarding` without fetching snapshots).
+
+---
+
+### ERR-0019 — Year-in-Review zeroes/under-counts current-year hours
+
+**Date:** 2026-07-06
+**Module:** backend
+**Severity:** High
+**Status:** Fixed
+
+**Symptom:** The Year in Review page reported far fewer hours than the user actually played that year (and 0 for a game with a single in-year snapshot), even though the dashboard's totals were correct. A game with pre-year playtime 100 min and in-year snapshots 200 → 350 showed a 2025 total of 150 min instead of the real 250 min.
+
+**Root cause:** `lib/insights/year-in-review.ts#deltasByApp` computed each game's yearly playtime gain as `(max − min)` among only the snapshots whose UTC year matched the review year. `playtimeForever` is a cumulative monotonic counter, so the year's true gain is `(in-year max) − (the value at the last snapshot strictly before Jan 1)`. Deriving the floor from the in-year *minimum* silently discards every hour accrued before the first in-year sample and returns 0 when there is a single in-year snapshot — the exact ERR-0009 class (a cumulative-counter delta needs a sample bracketing the lower edge of the window). `getYearInReview` never fetched or passed a pre-year baseline.
+
+**Fix:** `computeYearInReview` now takes a `baselineByApp: Map<appId, playtimeForever>` (the last snapshot strictly before the year). New `playtimeDeltasByApp` computes `gain = max(0, inYearMax − (baseline ?? firstInYearSample))`, keeping the monotonic ≥0 clamp. `server/repositories/insights/year-in-review.ts` derives that baseline in-memory from the already-fetched snapshot rows (latest row per app dated before the UTC year boundary) — no extra query. When a contributing game has NO pre-year baseline (onboarded mid-year), the first in-year snapshot is used as a best-effort floor and the result carries a new `partialYear: boolean` caveat instead of a silent fabricated number (degrade-never-fabricate). The dead `deltasByApp` helper was removed.
+
+**Generalized rule:** To measure the *change* of a cumulative counter over a window, the floor must come from a sample taken at or before the window's start — never from the minimum sample *inside* the window, which under-counts and returns 0 with a single in-window sample. When the bracketing sample is missing, surface an explicit caveat, don't fabricate a value. (Same class as ERR-0009; the fixed `countUnlocksInYear` event-count is the sibling pattern.)
+
+**Where else this assumption may be wrong:** Any other "gained within period" metric from snapshot deltas that filters to the period before taking min/max — monthly/weekly playtime gain, achievement-count deltas, library-value change. Each needs a baseline sample from before the window's start.
+
+**Prevented by:** Pure-function tests asserting a positive year total from a pre-year baseline (200→350 with baseline 100 → 250), a single in-year snapshot with a baseline yielding a positive delta (not 0), and the `partialYear` caveat surfacing when no baseline exists; a repository test proving the baseline is derived from pre-Jan-1 rows and that a mid-year onboard flags `partialYear`.
 
 ---
 

@@ -44,12 +44,19 @@ export interface TopGame {
 /** The computed Year in Review for one calendar year. */
 export interface YearInReview {
   year: number;
-  /** Sum of per-game (max − min) playtime deltas within the year, each ≥0. */
+  /** Sum of per-game playtime gained within the year (each ≥0). */
   totalMinutes: number;
   /** Games with minutesDelta > 0, sorted desc, top 5. */
   topGames: TopGame[];
   /** Sum of per-game (max − min) achievement-count deltas within the year, each ≥0. */
   achievementsUnlocked: number;
+  /**
+   * True when ≥1 game contributing playtime had NO snapshot strictly before
+   * Jan 1 of the year (onboarded mid-year). Its floor is the first in-year
+   * snapshot instead of a real pre-year baseline, so its gain is a lower bound.
+   * Degrade-never-fabricate: surfaced as a caveat rather than a silent number.
+   */
+  partialYear: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,34 +89,68 @@ export function countUnlocksInYear(rows: AchievementUnlockRow[], year: number): 
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** Per-app playtime gain plus whether any contributing app lacked a baseline. */
+interface PlaytimeDeltaResult {
+  /** appId → minutes gained within the year (each ≥0). */
+  deltas: Map<number, number>;
+  /**
+   * True when ≥1 app with a positive gain had NO snapshot strictly before the
+   * year (its floor fell back to the first in-year snapshot).
+   */
+  partialYear: boolean;
+}
+
 /**
- * For each appId in `rows`, compute (max − min) of `getValue(row)` among
- * rows whose UTC year matches `year`, clamped to ≥0.
+ * Playtime gain per app for the year of a CUMULATIVE monotonic counter.
+ *
+ * The gain is `(max in-year) − baseline`, where the baseline is the value of the
+ * LAST snapshot strictly before Jan 1 of the year (ERR-0019). A cumulative delta
+ * needs a sample bracketing the LOWER edge of the window; deriving the floor from
+ * the in-year minimum under-counts hours accrued before the first in-year sample.
+ *
+ * When an app has no pre-year baseline (onboarded mid-year), the first in-year
+ * snapshot is used as a best-effort floor and `partialYear` is flagged — we
+ * degrade with a caveat rather than fabricate a number.
  */
-function deltasByApp<T extends { appId: number; date: Date }>(
+function playtimeDeltasByApp<T extends { appId: number; date: Date }>(
   rows: T[],
   year: number,
+  baselineByApp: Map<number, number>,
   getValue: (row: T) => number,
-): Map<number, number> {
-  const minMax = new Map<number, { min: number; max: number }>();
+): PlaytimeDeltaResult {
+  // Per app, track the max in-year value and the first in-year sample (fallback floor).
+  const inYear = new Map<number, { max: number; firstValue: number; firstDate: Date }>();
 
   for (const row of rows) {
     if (row.date.getUTCFullYear() !== year) continue;
     const v = getValue(row);
-    const existing = minMax.get(row.appId);
+    const existing = inYear.get(row.appId);
     if (existing === undefined) {
-      minMax.set(row.appId, { min: v, max: v });
+      inYear.set(row.appId, { max: v, firstValue: v, firstDate: row.date });
     } else {
-      existing.min = Math.min(existing.min, v);
       existing.max = Math.max(existing.max, v);
+      if (row.date.getTime() < existing.firstDate.getTime()) {
+        existing.firstValue = v;
+        existing.firstDate = row.date;
+      }
     }
   }
 
   const deltas = new Map<number, number>();
-  for (const [appId, { min, max }] of minMax) {
-    deltas.set(appId, Math.max(0, max - min));
+  let partialYear = false;
+  for (const [appId, { max, firstValue }] of inYear) {
+    const baseline = baselineByApp.get(appId);
+    const hasBaseline = baseline !== undefined;
+    // Real baseline if we have one, else fall back to the first in-year sample.
+    const floor = hasBaseline ? baseline : firstValue;
+    // Monotonic clamp: never negative (Steam-side corrections can lower values).
+    const gain = Math.max(0, max - floor);
+    deltas.set(appId, gain);
+    // Any in-year app without a real pre-year baseline makes the year's total a
+    // lower bound — flag it regardless of this app's gain.
+    if (!hasBaseline) partialYear = true;
   }
-  return deltas;
+  return { deltas, partialYear };
 }
 
 // ---------------------------------------------------------------------------
@@ -139,14 +180,24 @@ export function availableYears(rows: { date: Date }[]): number[] {
  *   count is correct with a single day of data and no snapshot history, and an
  *   unlock in a game outside the top-played set still contributes.
  * @param names                 Map of appId → display name. Falls back to `"App {appId}"`.
+ * @param baselineByApp         appId → playtimeForever of the LAST snapshot
+ *   strictly before Jan 1 of `year` (ERR-0019). Games absent from this map had
+ *   no pre-year baseline; their gain floors at the first in-year snapshot and
+ *   sets `partialYear`. Defaults to empty (all games treated as onboarded now).
  */
 export function computeYearInReview(
   year: number,
   playtimeRows: YearPlaytimeRow[],
   achievementUnlockRows: AchievementUnlockRow[],
   names: Map<number, string>,
+  baselineByApp: Map<number, number> = new Map(),
 ): YearInReview {
-  const playtimeDeltas = deltasByApp(playtimeRows, year, (r) => r.playtimeForever);
+  const { deltas: playtimeDeltas, partialYear } = playtimeDeltasByApp(
+    playtimeRows,
+    year,
+    baselineByApp,
+    (r) => r.playtimeForever,
+  );
 
   // Total playtime = sum of all per-game deltas.
   let totalMinutes = 0;
@@ -171,5 +222,5 @@ export function computeYearInReview(
   // Total achievements = count of unlock events whose unlockedAt UTC year === year.
   const achievementsUnlocked = countUnlocksInYear(achievementUnlockRows, year);
 
-  return { year, totalMinutes, topGames, achievementsUnlocked };
+  return { year, totalMinutes, topGames, achievementsUnlocked, partialYear };
 }
