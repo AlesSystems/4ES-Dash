@@ -11,6 +11,8 @@
  *
  * This is the IDOR boundary: a viewer can never see another user's private /
  * derived data — canViewProfile decides before any data is fetched.
+ * Only the PRE-authz pair (viewer session ∥ target privacy lookup) runs in
+ * parallel BY DESIGN — authz-before-data survives the parallelization.
  */
 
 import type { Metadata } from 'next';
@@ -57,11 +59,16 @@ export default async function PublicProfilePage({
   }
 
   // Resolve the viewer (may be anonymous) and the target's privacy level.
-  const viewer = await getSessionUser();
-  const user = await prisma.user.findUnique({
-    where: { steamId },
-    select: { privacy: true },
-  });
+  // ONLY this pre-authz pair is parallel BY DESIGN (RSC-8): both reads are
+  // inputs to canViewProfile and fetch no target data. Everything downstream
+  // (canViewProfile → getProfile) stays strictly serial — see below.
+  const [viewer, user] = await Promise.all([
+    getSessionUser(),
+    prisma.user.findUnique({
+      where: { steamId },
+      select: { privacy: true },
+    }),
+  ]);
   const privacy: Privacy = user?.privacy ?? 'public';
 
   // Authorization gate — decided BEFORE any of the target's data is fetched.
