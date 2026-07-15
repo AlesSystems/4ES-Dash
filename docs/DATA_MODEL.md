@@ -58,6 +58,7 @@ model Game {
   headerUrl    String?
   releaseDate  DateTime?
   genres       String   // JSON-encoded array; expand to a join if we need to query by genre
+  categoryIds  String?  // JSON-encoded number array of Store category ids; null = never categorized by the nightly job
   hasStats     Boolean  @default(false)
   refreshedAt  DateTime @default(now())
 
@@ -181,6 +182,7 @@ model JobRun {
 - **Weekly playtime per game**: `SELECT date_trunc('week', date), MAX(playtimeForever) - MIN(playtimeForever) FROM PlaytimeSnapshot WHERE steamId = $1 AND appId = $2 GROUP BY 1`.
 - **Backlog**: `SELECT * FROM OwnedGame WHERE playtimeForever = 0 AND steamId = $1 ORDER BY acquiredAt`.
 - **Top genres by playtime**: requires the join table; tracked under Phase 4.
+- **`Game.categoryIds` is a nightly-refreshed precompute column (ERR-0022)**, sitting alongside the genres/price precompute fields: the nightly job's existing Store metadata pass persists the JSON number array of category ids, and the multiplayer filter reads it from the DB instead of fanning out to the Store per game on the request path. `null` = never categorized (game counts into `missingCount`, never silently classified). Unlike `genres` (reset to `'[]'` on unavailable metadata — a safe empty display state), `categoryIds` is **omitted from the upsert update on unavailable** (last-known-good) because `'[]'` would be a positive "no multiplayer categories" classification fabricated from missing data.
 
 ## Migration policy
 

@@ -36,6 +36,7 @@ Rules:
 | ERR-0019 | 2026-07-06 | backend | High | Year-in-Review zeroes/under-counts current-year hours — playtime gain derived from the in-year (max − min) spread with no pre-year baseline | Fixed |
 | ERR-0020 | 2026-07-06 | frontend,db | High | Insights pages slow: whole page blocks on slowest await; duplicate getSessionUser waterfall on genres; unbounded PlaytimeSnapshot scans bypassed `@@index([steamId, date])` | Fixed |
 | ERR-0021 | 2026-07-15 | frontend | High | First paint of every route gated on the un-suspended shell — 3 limiter-serialized Steam calls (~500 ms cold floor, +5.25 s on a transient) blocked document flush | Fixed |
+| ERR-0022 | 2026-07-15 | frontend,db | High | `/library?multiplayer=1` recomputed slow-changing Store reference data live on the request path — one `appdetails` call per owned game, limiter-serialized (~16.3 s cold @ N=65, linear in library size) | Fixed |
 
 **Allowed values**
 
@@ -529,6 +530,29 @@ Part (a) — moving the flag-gated SteamSpy-tag enrichment off the render path i
 **Where else this assumption may be wrong:** Insights pages — already fixed in bug-3's lane (ERR-0020, per-page Suspense); `/game/[appId]` — already correct (per-section boundaries; the repo's reference pattern). Any future layout-level async component (e.g. a Phase-6 account switcher) inherits this rule.
 
 **Prevented by:** Structural wiring test `tests/unit/shell-streaming.test.tsx` (exactly two boundaries, `{children}` outside — fails on any regression to direct mounts); geometry-equality tests (`tests/unit/header-skeleton.test.tsx`, `tests/unit/sidebar-skeleton.test.tsx`) pinning skeleton↔real class parity from both sides; degrade pin `tests/unit/shell-degrade.test.tsx` (Steam rejection → `—` placeholders, never a crash or fabricated zero).
+
+---
+
+### ERR-0022 — Multiplayer filter recomputed slow-changing Store reference data live on the request path
+
+**Date:** 2026-07-15
+**Module:** frontend, db
+**Severity:** High
+**Status:** Fixed
+
+**Symptom:** `/library?multiplayer=1` fired one live Store `appdetails` call per owned game via `Promise.all` in `getMultiplayerAppIds`; each call drained the capacity-1 / 250 ms `storeLimiter` serially — ~16.3 s cold at N=65 games, linear in library size (STEAM-1, `wayline/optimization/plan/PLAN-theme-2-external-fanouts.md`). The filter also contended with the nightly library-value pass on the same limiter.
+
+**Root cause:** Multiplayer classification was computed from **live** Store data on the request path even though its input (`categoryIds`) is slow-changing reference data the nightly job's `refreshGameStoreData` pass *already fetched* per game — and threw away. There is no batch `appdetails` endpoint (STEAM-9), so any request-path fan-out serializes at the limiter regardless of `Promise.all`.
+
+**Fix:** The repo's twice-proven precompute pattern (ERR-0010, ERR-0011): (1) nullable `Game.categoryIds` column (additive follow-up migration); (2) `refreshGameStoreData` persists `categoryIds` from the metadata it already holds — zero extra Store calls (pinned by a call-count tripwire test); on unavailable metadata the update **omits** the field (last-known-good; `null` on create; never `'[]'`, which would fabricate a positive non-multiplayer classification — a deliberate divergence from the genres `'[]'` reset); (3) `getMultiplayerAppIds` reads the DB in one `findMany` + the existing pure classifier — zero Store calls, `stale` pinned `false`, `null`/malformed rows into `missingCount`. Also in this lane: dedicated reference TTLs `achievementSchema` (7 d) / `achievementGlobal` (24 h) for the two `'global'`-scoped achievement caches (STEAM-2 residual — warm-instance win only, pending the bug-3 durable-cache decision).
+
+**Before/after:** Before — ~16.3 s cold at N=65 (receipt-verified expectation: N × 250 ms limiter floor), unbounded in N. After — one indexed DB read + the retained `getProfile` (typically a same-render cache hit); target < 100 ms, independent of N; zero Store calls proven by the rewritten integration suite (`tests/integration/multiplayer-repo.test.ts` asserts 0 `appdetails` requests on every test). Live wall-clock confirmation is a manual measurement (`wayline/optimization/measurements/theme-2-fanouts.md`) — not fabricated here.
+
+**Generalized rule:** Any per-game external field consumed library-wide on a request path must be persisted by the nightly job and read from the DB — the ERR-0010/0011 precompute rule, now closing its own "where else" note that named multiplayer. When persisting a *classification input*, an empty value on unavailable data is a fabricated classification, not a safe default — omit the write (last-known-good) and route missing data to the designed `missingCount`/unavailable state.
+
+**Where else this assumption may be wrong:** STEAM-2's durable per-user achievement-totals precompute remains a **deferred, currently-unowned residual** (this lane shipped only the cheap TTL right-sizing; the nightly aggregate mirroring `LibraryValueAggregate` is not owned by any theme — recorded here so it cannot be silently dropped). Limiter partitioning (STEAM-4) is explicitly deferred to Phase 6 with the instance-concurrency measurement. First post-deploy nightly run populates `categoryIds` — until then all games are "uncategorized" (designed state); run the guarded cron once manually after deploy.
+
+**Prevented by:** Tripwire tests — Store call count unchanged in the job (`tests/unit/game-store.test.ts`), zero Store calls in the reader on every integration test, `stale === false` pinned; the ERR-0010/0011 suites green throughout.
 
 ---
 
