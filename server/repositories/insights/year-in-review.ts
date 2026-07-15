@@ -34,47 +34,61 @@ export async function getAvailableReviewYears(steamId: string): Promise<number[]
 export async function getYearInReview(steamId: string, year: number): Promise<YearInReview> {
   const id = requireSteamId(steamId, 'getYearInReview');
 
-  // Date-bound the playtime scan to the UTC review-year window so the
-  // @@index([steamId, date]) is used instead of an unbounded full-table
-  // steamId scan. computeYearInReview only keeps rows whose UTC year === year
-  // (delta = max − min within the year), so this bound preserves semantics
-  // exactly — no baseline reach-back is needed.
+  // UTC review-year window. The main playtime scan keeps the full { gte, lt }
+  // bound so @@index([steamId, date]) prunes to the year's rows instead of an
+  // unbounded full-partition steamId scan (ERR-0020). The bound means the main
+  // scan can NEVER see pre-year rows — so the pre-year baseline (ERR-0019) is
+  // sourced from its own separately bounded fetch below, never derived from
+  // the main scan's rows.
   const yearStart = new Date(Date.UTC(year, 0, 1));
   const yearEnd = new Date(Date.UTC(year + 1, 0, 1));
 
-  const [playtimeRows, unlockRows] = await Promise.all([
+  const [playtimeRows, baselineKeys, unlockRows] = await Promise.all([
     prisma.playtimeSnapshot.findMany({
       where: { steamId: id, date: { gte: yearStart, lt: yearEnd } },
       select: { appId: true, date: true, playtimeForever: true },
     }),
+    // Pre-year baseline keys (ERR-0019): playtime is a cumulative monotonic
+    // counter, so the year's gain is (in-year max) − (the last snapshot
+    // STRICTLY before Jan 1). Latest pre-year snapshot date per app; bounded
+    // `lt: yearStart` only, prunes on @@index([steamId, date]) and returns at
+    // most one key per app.
+    prisma.playtimeSnapshot.groupBy({
+      by: ['appId'],
+      where: { steamId: id, date: { lt: yearStart } },
+      _max: { date: true },
+    }),
     // Per-achievement unlock EVENTS (#91). achievementsUnlocked is counted from
     // these by real unlockedAt UTC year — not a cumulative-snapshot delta.
+    // Bounded to the review year so @@index([steamId, unlockedAt]) prunes;
+    // computeYearInReview re-filters by UTC year as the pure module's
+    // defensive contract.
     prisma.achievementUnlock.findMany({
-      where: { steamId: id },
+      where: { steamId: id, unlockedAt: { gte: yearStart, lt: yearEnd } },
       select: { steamId: true, appId: true, apiName: true, unlockedAt: true },
     }),
   ]);
 
-  // Prior-year baseline (ERR-0019): playtime is a cumulative monotonic counter,
-  // so the year's gain is (in-year max) − (last snapshot strictly before Jan 1).
-  // Derive that floor per app from the already-fetched rows — collapse rows dated
-  // before the UTC year boundary to the latest value seen for each app. Apps with
-  // no pre-year snapshot are absent, which makes computeYearInReview flag the
-  // partial-year caveat rather than fabricate a floor.
-  const yearStartMs = Date.UTC(year, 0, 1, 0, 0, 0, 0);
-  const baselineByApp = new Map<number, number>();
-  const baselineDate = new Map<number, number>();
-  for (const row of playtimeRows) {
-    const t = row.date.getTime();
-    if (t >= yearStartMs) continue;
-    const seen = baselineDate.get(row.appId);
-    if (seen === undefined || t >= seen) {
-      baselineDate.set(row.appId, t);
-      baselineByApp.set(row.appId, row.playtimeForever);
-    }
-  }
+  // Keyed fetch of the (appId, latest pre-year date) rows → playtimeForever.
+  // Apps with no pre-year snapshot stay absent from the map, which makes
+  // computeYearInReview flag the partial-year caveat rather than fabricate a
+  // floor (degrade, never fabricate).
+  const baselinePairs = baselineKeys.flatMap((k) =>
+    k._max.date === null ? [] : [{ appId: k.appId, date: k._max.date }],
+  );
+  const baselineRows =
+    baselinePairs.length === 0
+      ? []
+      : await prisma.playtimeSnapshot.findMany({
+          where: { steamId: id, OR: baselinePairs },
+          select: { appId: true, playtimeForever: true },
+        });
+  const baselineByApp = new Map<number, number>(
+    baselineRows.map((r) => [r.appId, r.playtimeForever]),
+  );
 
-  // Names are only needed for the playtime-driven topGames list.
+  // Names are only needed for the playtime-driven topGames list — derived from
+  // the year-bounded rows only, so game.findMany shrinks with the main scan.
   const appIds = Array.from(new Set(playtimeRows.map((r) => r.appId)));
 
   const gameRecords = await prisma.game.findMany({
