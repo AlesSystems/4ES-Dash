@@ -53,6 +53,7 @@ model Game {
   headerUrl   String?
   releaseDate DateTime?
   genres      String    // JSON-encoded array; expand to a join if we need to query by genre
+  categoryIds String?   // JSON-encoded number array of Store category ids; null = never categorized by the nightly job
   hasStats    Boolean   @default(false)
   refreshedAt DateTime  @default(now())
 
