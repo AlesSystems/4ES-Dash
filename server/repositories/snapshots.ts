@@ -69,11 +69,22 @@ export async function getLibraryWithAcquisition(steamId: string): Promise<{
  *
  * @param steamId - Required. Pass getEnv().STEAM_ID at the call site for the
  *   featured/dev default — never read env.STEAM_ID inside this repository.
+ * @param opts.since - Optional lower date bound (inclusive). When provided the
+ *   scan is windowed with `date: { gte: since }` so the compound
+ *   `(steamId, date)` index prunes instead of hydrating the full append-only
+ *   history (Theme 1 / T4, DATA-6). Callers must pass a value floored to the
+ *   rendering bucket's boundary — see `historyWindowStart` in
+ *   `lib/history/aggregate.ts` — or the oldest rendered bucket under-counts.
+ *   Omitted → byte-identical full-history behavior (getFirstSeenDates and
+ *   acquiredAt inference depend on full history and never pass `since`).
  */
-export async function getPlaytimeSnapshots(steamId: string): Promise<PlaytimeSnapshotRow[]> {
+export async function getPlaytimeSnapshots(
+  steamId: string,
+  opts?: { since?: Date },
+): Promise<PlaytimeSnapshotRow[]> {
   const id = requireSteamId(steamId, 'getPlaytimeSnapshots');
   return prisma.playtimeSnapshot.findMany({
-    where: { steamId: id },
+    where: opts?.since ? { steamId: id, date: { gte: opts.since } } : { steamId: id },
     select: { appId: true, date: true, playtimeForever: true },
     orderBy: { date: 'asc' },
   });

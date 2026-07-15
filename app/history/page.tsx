@@ -10,10 +10,16 @@
  */
 
 import { redirect } from 'next/navigation';
+import { prisma } from '@/server/db';
 import { getPlaytimeSnapshots } from '@/server/repositories/snapshots';
 import { getViewerSteamId } from '@/server/auth';
 import { getOnboardingStatus } from '@/server/onboarding-gate';
-import { aggregatePlaytime, type Bucket } from '@/lib/history/aggregate';
+import {
+  aggregatePlaytime,
+  historyWindowStart,
+  HISTORY_LOOKBACK,
+  type Bucket,
+} from '@/lib/history/aggregate';
 import { HistoryToggle } from '@/components/history/HistoryToggle';
 import { PlaytimeChart } from '@/components/history/PlaytimeChart';
 import type { Metadata } from 'next';
@@ -51,8 +57,23 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
   }
 
   const featuredId = await getViewerSteamId();
-  const rows = await getPlaytimeSnapshots(featuredId);
+
+  // Windowed read (Theme 1 / T4, DATA-6): fetch only the rows the chart can
+  // render — HISTORY_LOOKBACK[bucket] back, floored to the bucket boundary so
+  // the oldest rendered bucket receives ALL of its rows (a mid-bucket `since`
+  // would under-count the first bar).
+  const since = historyWindowStart(bucket);
+  const rows = await getPlaytimeSnapshots(featuredId, { since });
   const points = aggregatePlaytime(rows, bucket);
+
+  // Pre-window-only data: an empty windowed fetch does NOT mean "no history
+  // yet" — an onboarded user's snapshots may all predate the window. Cheap
+  // existence probe (indexed count on steamId; the table's compound PK has no
+  // scalar id) distinguishes "no data ever" from "no data in window", so the
+  // copy never fabricates absence (degrade-never-fabricate).
+  const hasPreWindowHistory =
+    rows.length === 0 &&
+    (await prisma.playtimeSnapshot.count({ where: { steamId: featuredId } })) > 0;
 
   return (
     <main className={SHELL}>
@@ -64,8 +85,20 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
         </p>
       </div>
 
-      {rows.length === 0 ? (
-        /* No snapshots at all — first run hasn't fired yet */
+      {rows.length === 0 && hasPreWindowHistory ? (
+        /* History exists but all of it predates the fetch window — a quiet
+           state, NOT "No history yet" (that would fabricate absence). */
+        <div className="rounded-lg border border-border bg-surface p-6">
+          <h2 className="font-serif text-xl font-semibold text-text-1">No recent playtime</h2>
+          <p className="mt-2 text-sm text-text-3">
+            No playtime recorded in the last {HISTORY_LOOKBACK[bucket]}{' '}
+            {bucket === 'week' ? 'weeks' : 'months'}. Your older history is intact — nightly
+            snapshots will pick things up as soon as you play again.
+          </p>
+        </div>
+      ) : rows.length === 0 ? (
+        /* No snapshots at all — first run hasn't fired yet (defensive; the
+           onboarding gate normally catches this before render) */
         <div className="rounded-lg border border-border bg-surface p-6">
           <h2 className="font-serif text-xl font-semibold text-text-1">No history yet</h2>
           <p className="mt-2 text-sm text-text-3">

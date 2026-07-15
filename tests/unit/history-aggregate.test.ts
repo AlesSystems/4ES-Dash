@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { aggregatePlaytime } from '@/lib/history/aggregate';
+import {
+  aggregatePlaytime,
+  historyWindowStart,
+  HISTORY_LOOKBACK,
+} from '@/lib/history/aggregate';
 
 // ---------------------------------------------------------------------------
 // Helpers to create snapshot rows with UTC dates.
@@ -244,6 +248,80 @@ describe('aggregatePlaytime — output ordering', () => {
     const result = aggregatePlaytime(rows, 'month');
     // Expect Jan, Feb (zero), Mar
     expect(result.map((p) => p.period)).toEqual(['2026-01', '2026-02', '2026-03']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// History window helper (Theme 1 / T4 — windowed /history reads)
+// ---------------------------------------------------------------------------
+
+describe('historyWindowStart — floors the lookback to the bucket boundary (TDD #10)', () => {
+  // Fixed mid-bucket clock: 2026-07-15T12:00Z is a Wednesday, mid-July.
+  const MID_BUCKET_NOW = new Date('2026-07-15T12:00:00.000Z');
+
+  it('week: returns an ISO week start (UTC Monday midnight) ≥ 53 weeks back', () => {
+    const since = historyWindowStart('week', MID_BUCKET_NOW);
+    // Raw now − 53 weeks = Wed 2025-07-09 (mid-bucket) → floored to Mon 2025-07-07.
+    expect(since.toISOString()).toBe('2025-07-07T00:00:00.000Z');
+    expect(since.getUTCDay()).toBe(1); // Monday
+    // The window covers at least the full lookback.
+    expect(MID_BUCKET_NOW.getTime() - since.getTime()).toBeGreaterThanOrEqual(
+      HISTORY_LOOKBACK.week * 7 * 24 * 60 * 60 * 1000,
+    );
+  });
+
+  it('month: returns a UTC month start ≥ 25 months back', () => {
+    const since = historyWindowStart('month', MID_BUCKET_NOW);
+    // now − 25 months = 2024-06-15 (mid-bucket) → floored to 2024-06-01.
+    expect(since.toISOString()).toBe('2024-06-01T00:00:00.000Z');
+    expect(since.getUTCDate()).toBe(1);
+  });
+
+  it('week: a now already on a bucket boundary stays exactly lookback back', () => {
+    // 2026-07-13T00:00Z is a Monday; minus 371 days is Mon 2025-07-07 — the
+    // floor must be a no-op, not slide a further week back.
+    const boundaryNow = new Date('2026-07-13T00:00:00.000Z');
+    expect(historyWindowStart('week', boundaryNow).toISOString()).toBe(
+      '2025-07-07T00:00:00.000Z',
+    );
+  });
+
+  it('exports the per-bucket lookback constants', () => {
+    expect(HISTORY_LOOKBACK).toEqual({ week: 53, month: 25 });
+  });
+});
+
+describe('historyWindowStart — bucket completeness at the window edge (TDD #11)', () => {
+  it('oldest rendered bucket total matches the unwindowed computation', () => {
+    // Fixed clock chosen so the RAW lookback (now − 53 weeks = Wed 2025-07-09)
+    // lands MID-bucket inside ISO week 2025-W28 (Mon Jul 7 – Sun Jul 13).
+    // An unfloored `since` would drop the Mon/early-week rows and under-count
+    // the first bar (min would rise from 100 to 150) — this test goes red then.
+    const now = new Date('2026-07-15T12:00:00.000Z');
+    const since = historyWindowStart('week', now);
+
+    const allRows = [
+      // Pre-window history (must be excluded by the window, present unwindowed).
+      row(1, '2025-06-02T00:00:00.000Z', 40),
+      row(1, '2025-06-30T00:00:00.000Z', 80),
+      // Oldest in-window bucket 2025-W28: min 100, max 200 → total 100.
+      row(1, '2025-07-07T00:00:00.000Z', 100), // Monday — before the raw (unfloored) cutoff
+      row(1, '2025-07-09T00:00:00.000Z', 150),
+      row(1, '2025-07-12T00:00:00.000Z', 200),
+      // A later bucket so the series has ≥2 periods (no day-fallback).
+      row(1, '2025-07-14T00:00:00.000Z', 220), // 2025-W29
+      row(1, '2025-07-18T00:00:00.000Z', 300), // 2025-W29 → total 80
+    ];
+
+    const windowedRows = allRows.filter((r) => r.date.getTime() >= since.getTime());
+    const windowed = aggregatePlaytime(windowedRows, 'week');
+    const unwindowed = aggregatePlaytime(allRows, 'week');
+
+    const oldestRendered = windowed[0]!;
+    expect(oldestRendered.period).toBe('2025-W28');
+    const sameBucketUnwindowed = unwindowed.find((p) => p.period === '2025-W28')!;
+    expect(oldestRendered.minutes).toBe(sameBucketUnwindowed.minutes);
+    expect(oldestRendered.minutes).toBe(100); // full intra-bucket max − min
   });
 });
 

@@ -204,6 +204,42 @@ function aggregateByDay(
 }
 
 // ---------------------------------------------------------------------------
+// History fetch window (Theme 1 / T4 — windowed /history reads, DATA-6)
+// ---------------------------------------------------------------------------
+
+/**
+ * How far back /history fetches snapshot rows, in bucket units: 53 ISO weeks
+ * for the weekly view, 25 calendar months for the monthly view (one full
+ * year/two full years of buckets plus the current partial bucket).
+ */
+export const HISTORY_LOOKBACK: Record<Bucket, number> = { week: 53, month: 25 };
+
+/**
+ * Computes the inclusive lower bound (`since`) for a windowed history fetch:
+ * `now − HISTORY_LOOKBACK[bucket]`, FLOORED to the bucket boundary — the ISO
+ * week start (UTC Monday midnight, matching `aggregatePlaytime`'s ISO
+ * bucketing) for `week`, the UTC month start for `month`.
+ *
+ * The floor is load-bearing: bucket totals are intra-bucket Σ(max−min), so the
+ * oldest rendered bucket must receive ALL of its rows. A mid-bucket `since`
+ * silently under-counts the first bar (the in-window min is higher than the
+ * bucket's true min). Flooring only ever moves `since` earlier, so the window
+ * always covers at least the full lookback.
+ */
+export function historyWindowStart(bucket: Bucket, now: Date = new Date()): Date {
+  if (bucket === 'month') {
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - HISTORY_LOOKBACK.month, 1));
+  }
+  // Week: step back 53 whole weeks from UTC midnight of `now`, then floor to
+  // the Monday of that ISO week (Mon=0 after shifting getUTCDay's Sun=0 base).
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  d.setUTCDate(d.getUTCDate() - HISTORY_LOOKBACK.week * 7);
+  const dow = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - dow);
+  return d;
+}
+
+// ---------------------------------------------------------------------------
 // Main export
 // ---------------------------------------------------------------------------
 
