@@ -32,9 +32,25 @@ export interface GenreBreakdownResult {
  * - Games with no genre data (empty array or no Game row) contribute to unknownFromUnavailable.
  * - If NO game has any real genre, returns empty slices so the UI shows its
  *   "No genre data yet" empty state instead of a single 100%-"Unknown" slice.
+ *
+ * The whole labeled breakdown is cached at `TTL.insightsAggregate` under
+ * `insights-genres:<steamId>` (Theme 1 / T5, DATA-4). The inner per-app
+ * SteamSpy cache below is unchanged — it keeps its own key/TTL. A `stale: true`
+ * from the outer cache (loader failure, prior value served) is folded into the
+ * result's existing stale flag.
  */
 export async function getGenreBreakdown(steamId: string): Promise<GenreBreakdownResult> {
   const id = requireSteamId(steamId, 'getGenreBreakdown');
+  const { value, stale } = await cache(
+    cacheKey('insights-genres', id),
+    TTL.insightsAggregate,
+    () => loadGenreBreakdown(id),
+  );
+  return stale ? { ...value, stale: true } : value;
+}
+
+/** Uncached loader — DB genre read + optional SteamSpy tag enrichment. */
+async function loadGenreBreakdown(id: string): Promise<GenreBreakdownResult> {
   const env = getEnv();
 
   const ownedGames = await prisma.ownedGame.findMany({

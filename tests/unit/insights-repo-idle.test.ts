@@ -4,6 +4,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getIdleFlags, dismissIdleFlag } from '@/server/repositories/insights/idle';
+import { clearCache } from '@/server/cache';
 
 const mockPrisma = vi.hoisted(() => ({
   playtimeSnapshot: { findMany: vi.fn() },
@@ -21,6 +22,9 @@ function snap(appId: number, dateStr: string, playtimeForever: number) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // getIdleFlags' snapshot stage is cached (T5) — clear between cases so a
+  // warm hit never breaks Prisma call-count expectations (plan: binding).
+  clearCache();
   mockPrisma.idleDismissal.findMany.mockResolvedValue([]);
   mockPrisma.game.findMany.mockResolvedValue([]);
 });

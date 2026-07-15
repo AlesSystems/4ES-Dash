@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getPlaytimeSnapshots } from '@/server/repositories/snapshots';
+import { clearCache } from '@/server/cache';
 
 const mockPrisma = vi.hoisted(() => ({
   playtimeSnapshot: { findMany: vi.fn() },
@@ -19,6 +20,9 @@ const STEAM_ID = '76561198000000000';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // The since-parameterized path is cached (T5) — clear between cases so a
+  // warm hit never breaks Prisma call-count expectations (plan: binding).
+  clearCache();
   mockPrisma.playtimeSnapshot.findMany.mockResolvedValue([]);
 });
 

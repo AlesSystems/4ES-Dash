@@ -6,16 +6,29 @@
  */
 
 import { prisma } from '@/server/db';
+import { cache, cacheKey, TTL } from '@/server/cache';
 import { requireSteamId } from '@/server/repositories/require-steam-id';
 import { availableYears, computeYearInReview, type YearInReview } from '@/lib/insights';
 
 /**
  * Distinct UTC years with ≥1 playtime snapshot for the user, sorted DESC.
  * Returns [] when no snapshots exist.
+ *
+ * Cached at `TTL.insightsAggregate` under `insights-review-years:<steamId>`
+ * (Theme 1 / T5, DATA-4) — snapshot tables are written once nightly.
  */
 export async function getAvailableReviewYears(steamId: string): Promise<number[]> {
   const id = requireSteamId(steamId, 'getAvailableReviewYears');
+  const { value } = await cache(
+    cacheKey('insights-review-years', id),
+    TTL.insightsAggregate,
+    () => loadAvailableReviewYears(id),
+  );
+  return value;
+}
 
+/** Uncached loader — distinct-date scan + pure year extraction. */
+async function loadAvailableReviewYears(id: string): Promise<number[]> {
   // DB-side DISTINCT on date (Theme 1 / T2, DATA-5): materialize `days` rows
   // instead of `games × days`. On SQLite Prisma may apply the dedupe in its
   // query engine rather than as SQL DISTINCT — the hydrated-row reduction is
@@ -35,10 +48,23 @@ export async function getAvailableReviewYears(steamId: string): Promise<number[]
  * Game reference table (falls back to "App {id}").
  *
  * Returns totals of 0 + empty topGames when the year has no data.
+ *
+ * Cached at `TTL.insightsAggregate` under
+ * `insights-year-in-review:<steamId>:<year>` (Theme 1 / T5, DATA-4) — the year
+ * discriminator keeps different review years in separate entries.
  */
 export async function getYearInReview(steamId: string, year: number): Promise<YearInReview> {
   const id = requireSteamId(steamId, 'getYearInReview');
+  const { value } = await cache(
+    cacheKey('insights-year-in-review', id, year),
+    TTL.insightsAggregate,
+    () => loadYearInReview(id, year),
+  );
+  return value;
+}
 
+/** Uncached loader — bounded snapshot reads + pure computeYearInReview. */
+async function loadYearInReview(id: string, year: number): Promise<YearInReview> {
   // UTC review-year window. The main playtime scan keeps the full { gte, lt }
   // bound so @@index([steamId, date]) prunes to the year's rows instead of an
   // unbounded full-partition steamId scan (ERR-0020). The bound means the main

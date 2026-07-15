@@ -3,6 +3,7 @@ import {
   getAvailableReviewYears,
   getYearInReview,
 } from '@/server/repositories/insights/year-in-review';
+import { clearCache } from '@/server/cache';
 
 const mockPrisma = vi.hoisted(() => ({
   playtimeSnapshot: { findMany: vi.fn(), groupBy: vi.fn() },
@@ -16,6 +17,9 @@ vi.mock('@/server/env', () => ({ getEnv: () => ({ STEAM_ID: '76561198000000000' 
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Both exports are cached (T5) — clear between cases so a warm hit never
+  // breaks Prisma call-count expectations (plan: binding).
+  clearCache();
   // Default: no pre-year baseline rows. Tests that need a baseline seed it via
   // seedSnapshots (faithful two-query mock) below.
   mockPrisma.playtimeSnapshot.groupBy.mockResolvedValue([]);
@@ -199,7 +203,9 @@ describe('getAvailableReviewYears', () => {
     ]);
     expect(await getAvailableReviewYears('76561198000000000')).toEqual([2026, 2024]);
 
-    // Single-day data → exactly one year.
+    // Single-day data → exactly one year. Same steamId re-queried within one
+    // test: clear the T5 aggregate cache so the reseeded data is observed.
+    clearCache();
     seedYearRows([
       { appId: 730, date: new Date(Date.UTC(2024, 6, 15)) },
       { appId: 440, date: new Date(Date.UTC(2024, 6, 15)) },
@@ -207,6 +213,7 @@ describe('getAvailableReviewYears', () => {
     expect(await getAvailableReviewYears('76561198000000000')).toEqual([2024]);
 
     // Empty table → [].
+    clearCache();
     seedYearRows([]);
     expect(await getAvailableReviewYears('76561198000000000')).toEqual([]);
   });
