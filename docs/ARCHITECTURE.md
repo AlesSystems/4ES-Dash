@@ -155,6 +155,8 @@ sessions for different users never share a cache entry.
 7. The RSC renders the grid; the HTML streams to the browser.
 8. Client components (filters, sort) re-render locally without re-fetching.
 
+The shell streams independently of `{children}`: `app/layout.tsx` wraps `AppHeader` and `Sidebar` in their own `<Suspense>` boundaries with geometry-matched skeletons, so the document (and each route's content as it resolves) flushes without waiting for the shell's Steam-backed data. First paint is therefore decoupled from Steam Web API availability — a cold limiter floor or a retry backoff resolves into an already-painted page as a skeleton→content swap, never a blank tab (ERR-0021).
+
 ## Caching strategy
 
 | Endpoint                  | TTL       | Rationale                              |

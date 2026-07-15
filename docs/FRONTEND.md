@@ -19,6 +19,7 @@ This document is the contract for everything that ships HTML, CSS, or client JS.
 2. **Fetch where you render.** Server components call `lib/steam/...` directly. No client-side `fetch` to our own routes unless the data has to refresh in-place.
 3. **No data fetching in `useEffect`** for first paint. Use RSC + Suspense.
 4. **Stream**: wrap slow boundaries in `<Suspense>` with a skeleton.
+5. **Shell streaming (ERR-0021).** Any async RSC mounted in a layout above `{children}` MUST sit behind its own geometry-matched `<Suspense>` boundary — an un-suspended async component in the shell gates document flush of *every* route on its I/O (the root-layout header/sidebar once put 3 limiter-serialized Steam calls on every first paint). Canonical patterns: the shell boundaries in `app/layout.tsx` (`HeaderSkeleton`/`SidebarSkeleton`) and the per-section boundaries on `/game/[appId]`. A Suspense *fallback* must never render an async server component (the fallback itself would suspend and silently reinstate the coupling) — placeholders are static or `"use client"` only.
 
 ## File conventions
 

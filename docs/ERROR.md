@@ -35,6 +35,7 @@ Rules:
 | ERR-0018 | 2026-07-06 | frontend | Medium | History page empty until snapshots span ≥2 week/month periods — single-period spans collapsed to 1 point and were discarded; page not onboarding-gated | Fixed |
 | ERR-0019 | 2026-07-06 | backend | High | Year-in-Review zeroes/under-counts current-year hours — playtime gain derived from the in-year (max − min) spread with no pre-year baseline | Fixed |
 | ERR-0020 | 2026-07-06 | frontend,db | High | Insights pages slow: whole page blocks on slowest await; duplicate getSessionUser waterfall on genres; unbounded PlaytimeSnapshot scans bypassed `@@index([steamId, date])` | Fixed |
+| ERR-0021 | 2026-07-15 | frontend | High | First paint of every route gated on the un-suspended shell — 3 limiter-serialized Steam calls (~500 ms cold floor, +5.25 s on a transient) blocked document flush | Fixed |
 
 **Allowed values**
 
@@ -507,6 +508,27 @@ Part (a) — moving the flag-gated SteamSpy-tag enrichment off the render path i
 **Generalized rule:** On an interactive render path, never let the whole page block on its slowest data source — stream each slow section behind its own Suspense boundary with a geometry-matched skeleton. Resolve the session once per request and thread it through helpers instead of re-fetching. Every repository read against a snapshot table must express a date bound so the composite `(steamId, date)` index is usable — an unbounded `where: { steamId }` is a full-table scan.
 
 **Prevented by:** Repo unit tests asserting the mocked prisma `findMany` call includes a `where.date` bound (idle + year-in-review); auth/onboarding-gate tests asserting a passed session short-circuits the fresh lookup; a structural test asserting each insights page imports and renders a `<Suspense>` boundary with a fallback.
+
+---
+
+### ERR-0021 — First paint of every route gated on the un-suspended shell (3 limiter-serialized Steam calls)
+
+**Date:** 2026-07-15
+**Module:** frontend
+**Severity:** High
+**Status:** Fixed
+
+**Symptom:** Every route showed a blank tab until the shell's Steam I/O settled. Cold, the floor was ≈ 500 ms (three `steamLimiter` acquires serialized at 250 ms spacing) plus the last call's RTT; a single Steam transient added up to 5.25 s of retry backoff to first paint — on every route, since all routes inherit the root layout.
+
+**Root cause:** `app/layout.tsx` mounted async server components (`AppHeader`, `Sidebar` — plus `AuthControls`, a third async node embedded in the header) with no `<Suspense>` boundary anywhere in the shell. React cannot flush any byte of the document while un-suspended async children of the root layout are pending, so the shell's `getProfile`/`getLevel`/`getViewerSteamId` awaits sat on the first-paint critical path of every route (RSC-1/RSC-2, `wayline/optimization/plan/PLAN-theme-3-blocking-shell.md`).
+
+**Fix:** Geometry-matched `HeaderSkeleton`/`SidebarSkeleton` (sync server components; the async `AuthControls` slot is a static pulse placeholder — rendering it for real inside a fallback would make the fallback itself suspend and reinstate the coupling). `app/layout.tsx` wraps each shell component in its own `<Suspense>` with `{children}` outside both boundaries. Additionally, `/u/[steamId]` parallelizes the one sheddable pre-authz pair (`getSessionUser` ∥ privacy lookup) while `canViewProfile` still completes before any target-data fetch (RSC-8).
+
+**Generalized rule:** No un-suspended async component in a layout above `{children}` — every async RSC in a shell/layout must sit behind its own geometry-matched `<Suspense>` boundary, and a Suspense fallback must never contain an async server component. First paint must be structurally independent of upstream API health, not merely fast when caches are warm.
+
+**Where else this assumption may be wrong:** Insights pages — already fixed in bug-3's lane (ERR-0020, per-page Suspense); `/game/[appId]` — already correct (per-section boundaries; the repo's reference pattern). Any future layout-level async component (e.g. a Phase-6 account switcher) inherits this rule.
+
+**Prevented by:** Structural wiring test `tests/unit/shell-streaming.test.tsx` (exactly two boundaries, `{children}` outside — fails on any regression to direct mounts); geometry-equality tests (`tests/unit/header-skeleton.test.tsx`, `tests/unit/sidebar-skeleton.test.tsx`) pinning skeleton↔real class parity from both sides; degrade pin `tests/unit/shell-degrade.test.tsx` (Steam rejection → `—` placeholders, never a crash or fabricated zero).
 
 ---
 
