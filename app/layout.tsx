@@ -1,9 +1,12 @@
 import type { Metadata, Viewport } from 'next';
+import { Suspense } from 'react';
 import { Inter, JetBrains_Mono, Source_Serif_4 } from 'next/font/google';
 import Script from 'next/script';
 import './globals.css';
 import { AppHeader } from '@/components/layout/AppHeader';
+import { HeaderSkeleton } from '@/components/layout/HeaderSkeleton';
 import { Sidebar } from '@/components/layout/Sidebar';
+import { SidebarSkeleton } from '@/components/layout/SidebarSkeleton';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -63,9 +66,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Script id="theme-init" strategy="beforeInteractive">
           {THEME_INIT}
         </Script>
-        <AppHeader />
+        {/* Shell streams behind its own Suspense boundaries (Theme 3, T2):
+            the document — including {children}, which stays OUTSIDE both
+            boundaries — flushes immediately while the shell's Steam-gated
+            awaits resolve into geometry-matched skeletons. */}
+        <Suspense fallback={<HeaderSkeleton />}>
+          <AppHeader />
+        </Suspense>
         <div className="flex">
-          <Sidebar />
+          <Suspense fallback={<SidebarSkeleton />}>
+            <Sidebar />
+          </Suspense>
           <div className="min-w-0 flex-1">{children}</div>
         </div>
       </body>
