@@ -34,6 +34,7 @@ Rules:
 | ERR-0017 | 2026-06-28 | frontend,jobs | High | Re-sync button spins forever: no try/catch on client; unbounded achievement fan-out on server; writes not atomic | Fixed |
 | ERR-0018 | 2026-07-06 | frontend | Medium | History page empty until snapshots span ≥2 week/month periods — single-period spans collapsed to 1 point and were discarded; page not onboarding-gated | Fixed |
 | ERR-0019 | 2026-07-06 | backend | High | Year-in-Review zeroes/under-counts current-year hours — playtime gain derived from the in-year (max − min) spread with no pre-year baseline | Fixed |
+| ERR-0020 | 2026-07-06 | frontend,db | High | Insights pages slow: whole page blocks on slowest await; duplicate getSessionUser waterfall on genres; unbounded PlaytimeSnapshot scans bypassed `@@index([steamId, date])` | Fixed |
 
 **Allowed values**
 
@@ -481,6 +482,31 @@ Copy this block when adding a new entry. Replace every placeholder including the
 **Where else this assumption may be wrong:** Any other "gained within period" metric from snapshot deltas that filters to the period before taking min/max — monthly/weekly playtime gain, achievement-count deltas, library-value change. Each needs a baseline sample from before the window's start.
 
 **Prevented by:** Pure-function tests asserting a positive year total from a pre-year baseline (200→350 with baseline 100 → 250), a single in-year snapshot with a baseline yielding a positive delta (not 0), and the `partialYear` caveat surfacing when no baseline exists; a repository test proving the baseline is derived from pre-Jan-1 rows and that a mid-year onboard flags `partialYear`.
+
+---
+
+## ERR-0020 — Insights pages slow: page-wide await block, duplicate session waterfall, unbounded snapshot scans
+
+**Date:** 2026-07-06 · **Module:** frontend, db · **Severity:** High · **Status:** Fixed
+
+**Symptom:** The `/insights/*` pages (genres, idle, cost-per-hour) were slow to first paint. Three flag-independent causes:
+
+1. Each page did a single top-level `await` for its slowest data source, so the entire page (heading, disclaimers, caveats) blocked until that query resolved — no streaming.
+2. The genres page ran the session lookup twice per render: `getOnboardingStatus() → getSessionUser()` then `getViewerSteamId() → getSessionUser()` — a duplicate `getServerSession` waterfall.
+3. `getIdleFlags`, `getYearInReview`, and `getAvailableReviewYears` queried `PlaytimeSnapshot` with `findMany({ where: { steamId } })` and no date bound, forcing a full-table steamId scan that never used `@@index([steamId, date])`.
+
+**Root cause:** The interactive render path awaited slow, unbounded work synchronously and re-resolved the session per helper. Snapshot reads were unbounded because the query shape never expressed a date range the composite index could serve.
+
+**Fix:**
+1. Each insights page keeps its static shell (heading + disclaimer/caveat) and streams its slow section inside its own `<Suspense fallback={<Skeleton/>}>` where the skeleton mirrors final layout geometry (no CLS).
+2. The genres page resolves `getSessionUser()` once and passes it through; `getOnboardingStatus(sessionUser?)` and `getViewerSteamId(sessionUser?)` accept an optional pre-fetched session and skip the fresh lookup when given one.
+3. Added the tightest date bound that preserves semantics: `getYearInReview` bounds the playtime scan to `[Jan 1 year, Jan 1 year+1)` UTC (the pure compute already filters to that year); `getIdleFlags` bounds to `IDLE_LOOKBACK_DAYS` (365) via `date: { gte }`. `getAvailableReviewYears` was intentionally left unbounded — a distinct-years query has no semantics-preserving date bound.
+
+Part (a) — moving the flag-gated SteamSpy-tag enrichment off the render path into the nightly job — was NOT done here; it is gated on an unattached Phase-1 human check (ENABLE_STEAMSPY prod value + timing).
+
+**Generalized rule:** On an interactive render path, never let the whole page block on its slowest data source — stream each slow section behind its own Suspense boundary with a geometry-matched skeleton. Resolve the session once per request and thread it through helpers instead of re-fetching. Every repository read against a snapshot table must express a date bound so the composite `(steamId, date)` index is usable — an unbounded `where: { steamId }` is a full-table scan.
+
+**Prevented by:** Repo unit tests asserting the mocked prisma `findMany` call includes a `where.date` bound (idle + year-in-review); auth/onboarding-gate tests asserting a passed session short-circuits the fresh lookup; a structural test asserting each insights page imports and renders a `<Suspense>` boundary with a fallback.
 
 ---
 

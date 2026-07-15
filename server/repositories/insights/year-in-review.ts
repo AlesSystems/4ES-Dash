@@ -34,9 +34,17 @@ export async function getAvailableReviewYears(steamId: string): Promise<number[]
 export async function getYearInReview(steamId: string, year: number): Promise<YearInReview> {
   const id = requireSteamId(steamId, 'getYearInReview');
 
+  // Date-bound the playtime scan to the UTC review-year window so the
+  // @@index([steamId, date]) is used instead of an unbounded full-table
+  // steamId scan. computeYearInReview only keeps rows whose UTC year === year
+  // (delta = max − min within the year), so this bound preserves semantics
+  // exactly — no baseline reach-back is needed.
+  const yearStart = new Date(Date.UTC(year, 0, 1));
+  const yearEnd = new Date(Date.UTC(year + 1, 0, 1));
+
   const [playtimeRows, unlockRows] = await Promise.all([
     prisma.playtimeSnapshot.findMany({
-      where: { steamId: id },
+      where: { steamId: id, date: { gte: yearStart, lt: yearEnd } },
       select: { appId: true, date: true, playtimeForever: true },
     }),
     // Per-achievement unlock EVENTS (#91). achievementsUnlocked is counted from

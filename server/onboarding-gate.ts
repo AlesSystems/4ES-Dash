@@ -40,14 +40,19 @@ export type OnboardingGateStatus = 'no-session' | 'not-onboarded' | 'onboarded';
  *
  * Never throws; caller decides what to do with each status.
  */
-export async function getOnboardingStatus(): Promise<OnboardingGateStatus> {
-  const sessionUser = await getSessionUser();
-  if (sessionUser === null) {
+export async function getOnboardingStatus(
+  sessionUser?: { steamId: string } | null,
+): Promise<OnboardingGateStatus> {
+  // De-dupe the session waterfall: an RSC page that also resolves the viewer
+  // (getViewerSteamId) can pass the already-fetched session through so we don't
+  // call getSessionUser twice on the same render.
+  const resolved = sessionUser !== undefined ? sessionUser : await getSessionUser();
+  if (resolved === null) {
     return 'no-session';
   }
 
   const row = await prisma.user.findUnique({
-    where: { steamId: sessionUser.steamId },
+    where: { steamId: resolved.steamId },
     select: { onboardedAt: true },
   });
 

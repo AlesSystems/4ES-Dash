@@ -411,6 +411,27 @@ describe('getViewerSteamId — production fallback gate', () => {
     expect(result).toBe(SESSION_STEAM_ID);
   });
 
+  it('uses a passed-through session and does NOT re-call getServerSession (de-dupe)', async () => {
+    const PASSED_STEAM_ID = '76561198333333333';
+    const getServerSession = vi.fn().mockResolvedValue(null);
+    vi.doMock('next-auth', () => ({ getServerSession }));
+    vi.doMock('@/server/env', () => ({
+      getEnv: vi.fn().mockReturnValue({
+        NODE_ENV: 'production',
+        STEAM_ID: OWNER_STEAM_ID,
+        STEAM_API_KEY: 'k',
+        NEXTAUTH_SECRET: 's',
+        NEXTAUTH_URL: 'https://example.com',
+      }),
+    }));
+
+    const { getViewerSteamId } = await import('@/server/auth');
+    const result = await getViewerSteamId({ steamId: PASSED_STEAM_ID });
+    expect(result).toBe(PASSED_STEAM_ID);
+    // The waterfall is gone: no fresh session lookup when one is passed in.
+    expect(getServerSession).not.toHaveBeenCalled();
+  });
+
   it('returns session.steamId in development regardless of STEAM_ID', async () => {
     const SESSION_STEAM_ID = '76561198222222222';
     vi.doMock('next-auth', () => ({
