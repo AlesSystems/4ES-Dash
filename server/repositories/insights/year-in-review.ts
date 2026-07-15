@@ -16,8 +16,13 @@ import { availableYears, computeYearInReview, type YearInReview } from '@/lib/in
 export async function getAvailableReviewYears(steamId: string): Promise<number[]> {
   const id = requireSteamId(steamId, 'getAvailableReviewYears');
 
+  // DB-side DISTINCT on date (Theme 1 / T2, DATA-5): materialize `days` rows
+  // instead of `games × days`. On SQLite Prisma may apply the dedupe in its
+  // query engine rather than as SQL DISTINCT — the hydrated-row reduction is
+  // what is guaranteed here. Prisma-native, no raw SQL (dialect divergence).
   const rows = await prisma.playtimeSnapshot.findMany({
     where: { steamId: id },
+    distinct: ['date'],
     select: { date: true },
   });
 

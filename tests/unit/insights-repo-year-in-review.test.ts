@@ -136,6 +136,80 @@ describe('getAvailableReviewYears', () => {
       expect.objectContaining({ where: { steamId: '76561198111111111' } }),
     );
   });
+
+  // ---------------------------------------------------------------------------
+  // Theme 1 / T2 (DATA-5): DB-side DISTINCT on date.
+  //
+  // Faithful mock: answers what Prisma would materialize for the seeded rows
+  // given the captured args — applies `distinct: ['date']` dedupe only when the
+  // call actually requests it, so the hydrated-row assertion is red until the
+  // repository passes `distinct`. The assertion targets returned/materialized
+  // rows (on SQLite Prisma may dedupe in the query engine rather than via SQL
+  // DISTINCT — no SQL-level transfer claim is made here).
+  // ---------------------------------------------------------------------------
+  function seedYearRows(rows: { appId: number; date: Date }[]): void {
+    mockPrisma.playtimeSnapshot.findMany.mockImplementation(
+      async (args?: { distinct?: string[]; select?: { date?: boolean } }) => {
+        const selected = rows.map((r) => ({ date: r.date }));
+        if (!args?.distinct?.includes('date')) return selected;
+        const seen = new Set<number>();
+        return selected.filter((r) => {
+          if (seen.has(r.date.getTime())) return false;
+          seen.add(r.date.getTime());
+          return true;
+        });
+      },
+    );
+  }
+
+  it('requests distinct dates only (TDD #5): distinct + select captured, hydrated rows = days not games×days', async () => {
+    // 3 games × 4 days = 12 rows in the table, only 4 distinct dates.
+    const days = [
+      Date.UTC(2025, 0, 1),
+      Date.UTC(2025, 0, 2),
+      Date.UTC(2025, 5, 10),
+      Date.UTC(2025, 11, 31),
+    ];
+    seedYearRows(
+      [730, 440, 999].flatMap((appId) => days.map((ms) => ({ appId, date: new Date(ms) }))),
+    );
+
+    const years = await getAvailableReviewYears('76561198000000000');
+    expect(years).toEqual([2025]);
+
+    expect(mockPrisma.playtimeSnapshot.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { steamId: '76561198000000000' },
+        distinct: ['date'],
+        select: { date: true },
+      }),
+    );
+
+    // Materialized rows drop from games×days (12) to days (4).
+    const hydrated = await mockPrisma.playtimeSnapshot.findMany.mock.results[0]!.value;
+    expect(hydrated).toHaveLength(days.length);
+  });
+
+  it('available years unchanged incl. gap years and empty table (TDD #6, pinned regression)', async () => {
+    // Gap year: rows in 2026 and 2024 only — no phantom 2025.
+    seedYearRows([
+      { appId: 730, date: new Date(Date.UTC(2024, 3, 1)) },
+      { appId: 440, date: new Date(Date.UTC(2024, 3, 1)) },
+      { appId: 730, date: new Date(Date.UTC(2026, 1, 2)) },
+    ]);
+    expect(await getAvailableReviewYears('76561198000000000')).toEqual([2026, 2024]);
+
+    // Single-day data → exactly one year.
+    seedYearRows([
+      { appId: 730, date: new Date(Date.UTC(2024, 6, 15)) },
+      { appId: 440, date: new Date(Date.UTC(2024, 6, 15)) },
+    ]);
+    expect(await getAvailableReviewYears('76561198000000000')).toEqual([2024]);
+
+    // Empty table → [].
+    seedYearRows([]);
+    expect(await getAvailableReviewYears('76561198000000000')).toEqual([]);
+  });
 });
 
 describe('getYearInReview', () => {
