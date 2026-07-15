@@ -127,6 +127,81 @@ describe('refreshGameStoreData', () => {
     expect(call.create.genres).toBe('[]');
   });
 
+  it('persists categoryIds alongside genres for available metadata', async () => {
+    mockGetGameStoreMetadata.mockResolvedValue(
+      available({ name: 'Portal 2', shortDescription: '', headerImage: '', genres: ['Puzzle'], categories: ['Multi-player', 'Co-op'], categoryIds: [1, 36], developers: [], publishers: [], releaseDate: null, platforms: { windows: true, mac: false, linux: false } }),
+    );
+    mockGetGameStorePrice.mockResolvedValue(available(null));
+
+    await refreshGameStoreData([ownedGame(620, 'Portal 2')]);
+
+    expect(mockPrisma.game.upsert).toHaveBeenCalledOnce();
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const call = mockPrisma.game.upsert.mock.calls[0]![0]!;
+    // categoryIds — JSON-encoded number array, written on both branches
+    expect(call.create.categoryIds).toBe(JSON.stringify([1, 36]));
+    expect(call.update.categoryIds).toBe(JSON.stringify([1, 36]));
+    // genres persistence is unchanged by the categoryIds addition (ERR-0011)
+    expect(call.create.genres).toBe(JSON.stringify(['Puzzle']));
+    expect(call.update.genres).toBe(JSON.stringify(['Puzzle']));
+  });
+
+  it('leaves categoryIds untouched when metadata is unavailable', async () => {
+    mockGetGameStoreMetadata.mockResolvedValue(unavailable('metadata-unavailable'));
+    mockGetGameStorePrice.mockResolvedValue(unavailable('metadata-unavailable'));
+
+    await refreshGameStoreData([ownedGame(4321, 'Unreachable Game')]);
+
+    expect(mockPrisma.game.upsert).toHaveBeenCalledOnce();
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const call = mockPrisma.game.upsert.mock.calls[0]![0]!;
+    // update OMITS the field entirely — a pre-seeded value survives the pass
+    // (last-known-good). Writing anything here would clobber it.
+    expect('categoryIds' in call.update).toBe(false);
+    // a never-seen game is created with null (never categorized), NEVER '[]' —
+    // '[]' is a positive "no multiplayer categories" classification and would
+    // fabricate a non-multiplayer verdict from missing data.
+    expect(call.create.categoryIds).toBeNull();
+    expect(call.create.categoryIds).not.toBe('[]');
+  });
+
+  it('adds no extra Store calls', async () => {
+    // Regression tripwire (green throughout): persisting categoryIds must ride
+    // the metadata result the pass already holds — exactly one
+    // getGameStoreMetadata call per game, zero added limiter pressure.
+    mockGetGameStoreMetadata.mockResolvedValue(
+      available({ name: 'Any', shortDescription: '', headerImage: '', genres: [], categories: [], categoryIds: [1], developers: [], publishers: [], releaseDate: null, platforms: { windows: true, mac: false, linux: false } }),
+    );
+    mockGetGameStorePrice.mockResolvedValue(available(null));
+
+    const games = [ownedGame(10), ownedGame(20), ownedGame(30)];
+    await refreshGameStoreData(games);
+
+    expect(mockGetGameStoreMetadata).toHaveBeenCalledTimes(games.length);
+  });
+
+  it('is idempotent — a second run on the same input writes identical rows', async () => {
+    mockGetGameStoreMetadata.mockResolvedValue(
+      available({ name: 'Portal 2', shortDescription: '', headerImage: '', genres: ['Puzzle'], categories: ['Multi-player'], categoryIds: [1, 36], developers: [], publishers: [], releaseDate: null, platforms: { windows: true, mac: false, linux: false } }),
+    );
+    mockGetGameStorePrice.mockResolvedValue(available(null));
+
+    await refreshGameStoreData([ownedGame(620, 'Portal 2')]);
+    await refreshGameStoreData([ownedGame(620, 'Portal 2')]);
+
+    expect(mockPrisma.game.upsert).toHaveBeenCalledTimes(2);
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const first = mockPrisma.game.upsert.mock.calls[0]![0]!;
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const second = mockPrisma.game.upsert.mock.calls[1]![0]!;
+    // Identical rows modulo the refresh timestamp.
+    const strip = (args: { create: Record<string, unknown>; update: Record<string, unknown> }) => ({
+      create: { ...args.create, priceRefreshedAt: undefined },
+      update: { ...args.update, priceRefreshedAt: undefined },
+    });
+    expect(strip(second)).toEqual(strip(first));
+  });
+
   it('processes remaining games when one game throws (best-effort)', async () => {
     // First game: getGameStoreMetadata rejects
     mockGetGameStoreMetadata
