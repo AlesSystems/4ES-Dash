@@ -8,6 +8,12 @@ export const TTL = Object.freeze({
   recentlyPlayed: 900, // 15 min
   steamLevel: 86400, // 24 h
   playerAchievements: 3600, // 1 h
+  // Per-app achievement reference data ('global' pseudo-steamId caches).
+  // Warm-instance-only win: the in-process cache empties on serverless cold
+  // start, so full effect awaits the bug-3 durable-cache decision (STEAM-2
+  // residual, PLAN-theme-2-external-fanouts T4).
+  achievementSchema: 604800, // 7 d — per-app schema; changes on rare dev pushes (DLC)
+  achievementGlobal: 86400, // 24 h — global unlock percentages; slow-moving
   friendList: 86400, // 24 h
   storeMetadata: 604800, // 7 days
   storePrice: 3600, // 1 h
