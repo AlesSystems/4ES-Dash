@@ -112,6 +112,42 @@ Reasons, itemized:
 
 ---
 
-# Round 2 — re-review after closeout remediation
+# Round 2 addendum — Theme 3 closeout re-review
 
-_(appended after the round-1 reject was remediated; see round-2 verdict below)_
+> **Date:** 2026-07-15
+> **Reviewer:** adversarial reviewer (read-only), separate context
+> **Re-reviewed commit:** `a5aba37` docs(shell): theme-3 closeout (on top of `d436fb3`/`d1ef879`/`94c7d97`)
+> **Range now:** `git diff 140821b...HEAD` = 10 code/test files + 5 closeout files (15 total)
+
+## Round-1 blocker — RESOLVED
+
+My sole round-1 reject reason was "Required docs/ updates absent." All three plan-mandated updates are now present and substantive (not stubs):
+
+- **`docs/FRONTEND.md`** — Rendering rules item 5: "Shell streaming (ERR-0021)" rule requiring every layout-level async RSC behind its own geometry-matched `<Suspense>`, and the explicit fallback-must-not-be-async caveat. Cites both canonical patterns (`app/layout.tsx` shell boundaries + `/game/[appId]` per-section). Exactly what the plan specified.
+- **`docs/ARCHITECTURE.md`** — one-paragraph data-flow amendment: shell streams independently of `{children}`, first paint decoupled from Steam Web API availability, references ERR-0021. Matches the plan's required amendment.
+- **`docs/ERROR.md`** — ERR-0021 full record (symptom, root cause with the RSC-1/2 mechanism, fix, generalized rule "no un-suspended async component in a layout above `{children}`", where-else-checked = insights/bug-3 lane + `/game/[appId]` already-correct, and the preventing tests) **plus** the index-table row. Consistent with the repo's ERR template and the bug-2/bug-3 docs-with-fix convention I cited in round 1.
+
+## Pending exit-criteria items — SATISFIED via honest handoff (nothing simulated)
+
+`wayline/optimization/measurements/theme-3-shell.md` records the manual measurement plan correctly: `shell-timing` before/after and the DevTools streaming proof are marked `handoff: manual` (not CI-gated — the plan's own T2 acceptance text states the runtime proof "is a manual maintainer step, not CI-gated"), with the base-SHA (`140821b`) instruction I flagged in round 1 for capturing the pre-T2 "before" trace. The "what IS proven locally" table only claims the four CI-gated proofs I independently verified green. No TTFB/LCP number is fabricated; live items are explicitly deferred to a maintainer, which is the sanctioned closeout path (fabricating them would have been a reject; honestly marking them manual is correct).
+
+## SECURITY.md omission — CONFIRMED non-blocking
+
+The plan text makes the SECURITY.md line the reviewer's discretion ("Comment in the page may suffice; reviewer's call"). The `/u/[steamId]` page comment (`app/u/[steamId]/page.tsx:12-15, 62-64`) documents the authz-before-data invariant surviving the pre-authz parallelization. That is adequate; I do **not** consider a SECURITY.md line mandatory. Leaving it out is within the plan's grant.
+
+## Three NITS — CONFIRMED as nits, none escalated
+
+1. `shell-streaming.test.tsx:64` vacuous `{children}` presence check (comment contains the literal) — cosmetic; the load-bearing "not inside either boundary" assertion is sound. Still a nit.
+2. TDD #6 pin committed with the T3 change rather than strictly before — green-at-base verified by source read; no exposure. Still a nit.
+3. `SidebarSkeleton` omits the count chip entirely (better swap-inertness than the plan prose) — design-prose deviation, not an acceptance criterion. Still a nit.
+
+None rise to blocker; leaving them untouched under a limited-repair scope is correct.
+
+## Scope / gate re-verification
+
+- **Scope:** diff spans exactly the 10 sanctioned code/test files + the 5 sanctioned closeout files (3 required docs + measurements + review record). Zero diff under `app/insights/**` or `app/game/**`. No existing test weakened; no migration touched; no `package.json`/Playwright change.
+- **Gate:** closeout is docs-only (no `.ts`/`.tsx`), so the green gate from this session stands unaffected — `pnpm typecheck` PASS, `pnpm lint` PASS (no warnings/errors), `pnpm test` PASS (111 files, 983 tests).
+
+Every per-task acceptance criterion is met and covered by a regression-detecting test; all six TDD rows are realized at their planned paths; the invariants table holds line by line; scope is exactly the declared file set; and the docs/measurement closeout my round-1 verdict required is now present and honest.
+
+VERDICT: APPROVE
