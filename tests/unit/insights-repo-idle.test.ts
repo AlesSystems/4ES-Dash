@@ -4,6 +4,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getIdleFlags, dismissIdleFlag } from '@/server/repositories/insights/idle';
+import { IDLE_LOOKBACK_DAYS } from '@/lib/insights';
 import { clearCache } from '@/server/cache';
 
 const mockPrisma = vi.hoisted(() => ({
@@ -98,6 +99,26 @@ describe('getIdleFlags', () => {
     // The scan must be date-bounded (not an unbounded full-table steamId scan).
     expect(call.where.date).toBeDefined();
     expect(call.where.date.gte).toBeInstanceOf(Date);
+  });
+
+  it('pins the lookback magnitude to IDLE_LOOKBACK_DAYS from lib/insights (pinned tripwire — green from start)', async () => {
+    // TDD row #7 (PLAN-theme-1-snapshot-reads): gte must equal
+    // now − IDLE_LOOKBACK_DAYS days, with the constant imported from
+    // `@/lib/insights` (single source). Value-level pin: a drift to a
+    // different day count — or days→hours — trips this immediately.
+    // Fake ONLY Date so the cache/promise machinery is untouched.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const now = new Date('2026-07-16T12:00:00.000Z');
+      vi.setSystemTime(now);
+      mockPrisma.playtimeSnapshot.findMany.mockResolvedValue([]);
+      await getIdleFlags(STEAM_ID);
+      const call = mockPrisma.playtimeSnapshot.findMany.mock.calls[0]![0]!;
+      const gte: Date = call.where.date.gte;
+      expect(gte.getTime()).toBe(now.getTime() - IDLE_LOOKBACK_DAYS * 86_400_000);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

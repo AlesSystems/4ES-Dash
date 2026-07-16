@@ -15,6 +15,16 @@
 - Regression pin present in bug-3's own suite:
   `tests/unit/insights-repo-idle.test.ts:89` `date-bounds the playtimeSnapshot scan so
   @@index([steamId, date]) is usable` (asserts `where.date.gte instanceof Date`). Green.
+- **Correction (2026-07-16, theme-1 repair round):** the round-1 claim above was an
+  over-claim against TDD row #7 — the `instanceof Date` assertion pins only
+  *boundedness*, not the lookback's magnitude or its source constant; the lookback
+  could have drifted (e.g. to 30 days, or days→hours) with the suite still green.
+  A value-level pin was added in the repair round:
+  `tests/unit/insights-repo-idle.test.ts` `pins the lookback magnitude to
+  IDLE_LOOKBACK_DAYS from lib/insights (pinned tripwire — green from start)` asserts,
+  under a fake clock, `gte.getTime() === now − IDLE_LOOKBACK_DAYS·86400000` with the
+  constant imported from `@/lib/insights`. Red-proofed against a local 30-day
+  perturbation, then reverted; green on the real code.
 - Theme 1 makes zero changes to the idle query or `lib/insights/idle.ts` (T5 later adds
   only a cache wrap in the repository file, query untouched).
 
