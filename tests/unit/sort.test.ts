@@ -4,6 +4,7 @@ import {
   filterGames,
   parseSortKey,
   sortGames,
+  toLibraryTile,
   type LibraryGame,
 } from '@/lib/games/sort';
 
@@ -71,6 +72,32 @@ describe('filterGames', () => {
     ).toEqual([1, 2, 3]);
     expect(filterGames(games, 'char').map((g) => g.appId)).toEqual([3]);
     expect(filterGames(games, '   ')).toHaveLength(3);
+  });
+});
+
+describe('toLibraryTile', () => {
+  it('toLibraryTile strips non-tile fields', () => {
+    const full = game({
+      appId: 42,
+      name: 'Deep Rock',
+      playtime: { total: 120, twoWeeks: 30 },
+      hasAchievements: true,
+      iconUrl: 'https://media.steampowered.com/icon.jpg',
+      lastPlayed: '2026-07-01T00:00:00.000Z',
+      acquiredAt: '2025-01-01T00:00:00.000Z',
+    });
+    const tile = toLibraryTile(full);
+    expect(Object.keys(tile).sort()).toEqual(
+      ['appId', 'name', 'headerUrl', 'hasAchievements', 'playtime'].sort(),
+    );
+    expect(Object.keys(tile.playtime).sort()).toEqual(['total', 'twoWeeks'].sort());
+    expect(tile).toEqual({
+      appId: 42,
+      name: 'Deep Rock',
+      headerUrl: 'https://cdn.akamai.steamstatic.com/steam/apps/42/header.jpg',
+      hasAchievements: true,
+      playtime: { total: 120, twoWeeks: 30 },
+    });
   });
 });
 

@@ -2,12 +2,13 @@
 
 import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
-import type { LibraryGame, ViewMode } from '@/lib/games/sort';
+import type { LibraryTileGame, ViewMode } from '@/lib/games/sort';
 import { GameCard } from './GameCard';
 import { GameRow } from './GameRow';
 
 export interface LibraryResultsProps {
-  games: LibraryGame[];
+  /** Tile-only projection — the RSC maps `LibraryGame` → `toLibraryTile` before passing. */
+  games: LibraryTileGame[];
   view: ViewMode;
   /** When true playtime is hidden by Steam privacy — passed to each game tile. */
   playtimeHidden?: boolean;

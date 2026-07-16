@@ -23,6 +23,29 @@ export const SORT_LABELS: Record<SortKey, string> = {
 /** A library game optionally carrying a snapshot-inferred acquisition date. */
 export type LibraryGame = OwnedGame & { acquiredAt?: string | null };
 
+/** Exactly the fields the library tiles render — nothing else crosses the RSC→client boundary. */
+export type LibraryTileGame = Pick<
+  OwnedGame,
+  'appId' | 'name' | 'headerUrl' | 'hasAchievements'
+> & {
+  playtime: { total: number; twoWeeks: number };
+};
+
+/**
+ * Project a full {@link LibraryGame} to the tile-only shape sent to the client.
+ * Sort/filter on the full `LibraryGame` FIRST (e.g. `recent`/`added` need
+ * `playtime.twoWeeks`/`acquiredAt`), then map with this at the boundary.
+ */
+export function toLibraryTile(g: LibraryGame): LibraryTileGame {
+  return {
+    appId: g.appId,
+    name: g.name,
+    headerUrl: g.headerUrl,
+    hasAchievements: g.hasAchievements,
+    playtime: { total: g.playtime.total, twoWeeks: g.playtime.twoWeeks },
+  };
+}
+
 /**
  * Library status filter. Derived purely from playtime (real data):
  * - `in-progress`: total playtime > 0

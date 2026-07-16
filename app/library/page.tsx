@@ -6,6 +6,7 @@ import {
   sortGames,
   filterGames,
   filterByStatus,
+  toLibraryTile,
   type LibraryGame,
 } from '@/lib/games/sort';
 import { parseMultiplayerParam, filterToMultiplayer } from '@/lib/games/multiplayer';
@@ -145,7 +146,9 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
         ) : (
           <LibraryResults
             key={`${status}-${sort}-${q}`}
-            games={shown}
+            // Sort/filter above use the full LibraryGame (recent/added need
+            // twoWeeks/acquiredAt); only the tile projection crosses to the client.
+            games={shown.map(toLibraryTile)}
             view={view}
             playtimeHidden={playtimeHidden}
           />
