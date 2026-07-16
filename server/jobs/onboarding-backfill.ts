@@ -25,6 +25,19 @@ import { isSteamApiError } from '@/lib/steam/errors';
 import { utcDayKey, clampPlaytime, recordAchievementUnlocks } from '@/server/jobs/snapshot';
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/**
+ * Bounded per-game achievement fan-out on the interactive FIRST-LOGIN path
+ * (ERR-0024: every job fan-out carries an explicit budget). Fan-out bound,
+ * not a TTL — same pattern as ACHIEVEMENT_RESYNC_LIMIT in
+ * app/settings/actions.ts. Applied when the caller passes no
+ * achievementUnlockLimit; the resync path passes its own explicit bound.
+ */
+export const ONBOARDING_UNLOCK_LIMIT = 20;
+
+// ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
 
@@ -179,10 +192,17 @@ export async function runOnboardingBackfill(
   // ------------------------------------------------------------------
   // Seed per-achievement unlock events (#91) — best-effort, outside the
   // transaction: a Steam failure here must not roll back the onboarding.
-  // Thread the optional limit from the resync path (bounded fan-out).
+  // Thread the resync path's explicit limit when given; otherwise apply
+  // ONBOARDING_UNLOCK_LIMIT so the interactive first-login path is always
+  // explicitly bounded (ERR-0024) instead of falling to the nightly
+  // rotation contract of recordAchievementUnlocks.
   // ------------------------------------------------------------------
   try {
-    await recordAchievementUnlocks(id, games, opts?.achievementUnlockLimit);
+    await recordAchievementUnlocks(
+      id,
+      games,
+      opts?.achievementUnlockLimit ?? ONBOARDING_UNLOCK_LIMIT,
+    );
   } catch (err) {
     console.error('[onboarding-backfill] achievement unlock seeding failed for steamId=%s', id, err);
   }

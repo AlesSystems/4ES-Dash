@@ -22,6 +22,8 @@
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
+import * as fs from 'fs';
+import * as path from 'path';
 import { SteamApiError } from '@/lib/steam/errors';
 import { steamServer } from '../mocks/steam-server';
 
@@ -344,5 +346,106 @@ describe('runOnboardingBackfill — $transaction boundary (bug-04)', () => {
     expect(mockTransaction).toHaveBeenCalled();
     const firstArg = mockTransaction.mock.calls[0]?.[0];
     expect(typeof firstArg).toBe('function');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Theme-5 T2: explicit first-login achievement fan-out bound (ERR-0024)
+// ---------------------------------------------------------------------------
+
+describe('runOnboardingBackfill — achievement unlock fan-out bound (theme-5 T2)', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    mockFindUniqueUser.mockResolvedValue(null);
+    mockGroupBySnapshot.mockResolvedValue([]);
+    mockFindManySnapshots.mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * Fresh-imports onboarding-backfill with:
+   *  - the REAL MSW-backed profile repository (clears any lingering doMock), and
+   *  - `recordAchievementUnlocks` replaced by a spy (utcDayKey/clampPlaytime
+   *    stay real via importActual).
+   */
+  async function importWithUnlockSpy(): Promise<{
+    runOnboardingBackfill: typeof import('@/server/jobs/onboarding-backfill')['runOnboardingBackfill'];
+    unlockSpy: ReturnType<typeof vi.fn>;
+  }> {
+    vi.doMock('@/server/repositories/profile', async () => {
+      return vi.importActual('@/server/repositories/profile');
+    });
+
+    const unlockSpy = vi.fn().mockResolvedValue(undefined);
+    vi.doMock('@/server/jobs/snapshot', async () => {
+      const real = await vi.importActual<typeof import('@/server/jobs/snapshot')>(
+        '@/server/jobs/snapshot',
+      );
+      return { ...real, recordAchievementUnlocks: unlockSpy };
+    });
+
+    const { runOnboardingBackfill } = await import('@/server/jobs/onboarding-backfill');
+    return { runOnboardingBackfill, unlockSpy };
+  }
+
+  it('first login passes ONBOARDING_UNLOCK_LIMIT to recordAchievementUnlocks', async () => {
+    // TDD row 5: with NO opts, the first-login path must pass the explicit
+    // bound (20), never `undefined` (which would fan out to the unbounded
+    // nightly rotation path — wrong contract for an interactive first paint).
+    const { runOnboardingBackfill, unlockSpy } = await importWithUnlockSpy();
+
+    const result = await runOnboardingBackfill(TEST_STEAM_ID);
+    expect(result).toEqual({ onboarded: true });
+
+    expect(unlockSpy).toHaveBeenCalledTimes(1);
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const [calledId, calledGames, calledLimit] = unlockSpy.mock.calls[0]!;
+    expect(calledId).toBe(TEST_STEAM_ID);
+    expect(Array.isArray(calledGames)).toBe(true);
+    expect(calledLimit).toBe(20);
+  });
+
+  it('resync opts pass through unchanged (characterization pin)', async () => {
+    // TDD row 6 — pin, green from the start: the resync path's explicit
+    // { force: true, achievementUnlockLimit: 20 } must be forwarded verbatim.
+    const { runOnboardingBackfill, unlockSpy } = await importWithUnlockSpy();
+
+    const result = await runOnboardingBackfill(TEST_STEAM_ID, {
+      force: true,
+      achievementUnlockLimit: 20,
+    });
+    expect(result).toEqual({ onboarded: true });
+
+    expect(unlockSpy).toHaveBeenCalledTimes(1);
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const [calledId, , calledLimit] = unlockSpy.mock.calls[0]!;
+    expect(calledId).toBe(TEST_STEAM_ID);
+    expect(calledLimit).toBe(20);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Theme-5 T2: /onboarding page carries maxDuration (source assertion,
+// same pattern as tests/unit/page-wiring.test.ts)
+// ---------------------------------------------------------------------------
+
+describe('app/onboarding/page.tsx — maxDuration export (theme-5 T2)', () => {
+  const pageSrc = fs.readFileSync(
+    path.resolve(__dirname, '../../app/onboarding/page.tsx'),
+    'utf8',
+  );
+
+  it('exports maxDuration = 60 (mirrors app/settings/page.tsx)', () => {
+    expect(pageSrc).toMatch(/export const maxDuration = 60/);
+  });
+
+  it('keeps the skeleton + Suspense boundary unchanged', () => {
+    expect(pageSrc).toContain('function OnboardingSkeleton()');
+    expect(pageSrc).toContain('<Suspense fallback={<OnboardingSkeleton />}>');
+    expect(pageSrc).toContain('<OnboardingRunner steamId={session.steamId} />');
   });
 });
