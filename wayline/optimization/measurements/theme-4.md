@@ -45,6 +45,10 @@ What is already machine-proven structurally (unit suite): the boundary ships at 
 
 The plan marks this optional with no claim beyond "negligible stays negligible." Behavior is pinned by tests (newest-first ordering, inclusive 7-day boundary, null-skip); the comparator no longer constructs `Date` objects (verified by diff review). No wall-time number recorded.
 
+## T2 AC6 (Playwright e2e) — environment-blocked, not applicable
+
+The repo has no Playwright suite (no `playwright.config.*`, no `*.spec.ts`, no `playwright` entry in `package.json`), so AC6's self-conditioning e2e clause ("if the e2e suite covers `/library`") does not apply; the click→`limit=48`→48-tiles behavior is covered by unit TDD rows 3/5/5b instead. Recorded per reviewer round-1 MINOR issue 1.
+
 ## docs/API.md — verified, no change
 
 Theme 4 touches no public `/api/*` surface (rejected alternative 1 avoided exactly this); verified against the diff `d419850...e2cbb02`. Recorded here per the theme-1 review nit that no-change verifications should live in a committed doc, not only a commit message.
