@@ -68,3 +68,43 @@ The plan designed this metric specifically to be "measurable *today* without pro
 Everything except Blocker 1 verified clean; re-review after the pin-test fix should be fast (the fix touches only `tests/unit/insights-repo-idle.test.ts` and, if desired, a one-line honesty amendment to the handoff/measurements files).
 
 VERDICT: REJECT
+
+---
+
+## Round 2 (post-repair)
+
+- **Date:** 2026-07-16 · **Reviewer:** adversarial reviewer, round 2 (read-only)
+- **HEAD under review:** `410bf60` on `fix/opt-theme-1-snapshot-reads`
+- **Inter-round delta:** exactly two commits — `f2d1f0b` (orchestrator's round-1 verdict record, touches only `wayline/optimization/review/theme-1-implementation-review.md`, +70) and `410bf60` (the repair). No other changes.
+
+### Findings
+
+**Blocker 1 resolution — verified resolved, with my own empirical receipts (worker's transcript not relied upon).**
+
+1. **Repair diff scope:** `git show 410bf60 --stat` → 31 insertions, **0 deletions**, exactly two files (`tests/unit/insights-repo-idle.test.ts`, `wayline/optimization/handoffs/idle-margin-bug3-lane.md`). The pre-existing `instanceof Date` boundedness pin is retained; nothing weakened, nothing else touched.
+2. **Test satisfies TDD row #7 literally:** the new test (`insights-repo-idle.test.ts:104-123`) imports `IDLE_LOOKBACK_DAYS` from `@/lib/insights` (single-source constant, per the plan) and asserts **exact epoch equality** `gte.getTime() === now.getTime() − IDLE_LOOKBACK_DAYS · 86_400_000` under a fixed clock. `vi.useFakeTimers({ toFake: ['Date'] })` fakes only `Date`, leaving the cache/promise machinery real — correctly implemented (`clearCache()` in `beforeEach` guarantees the loader actually runs; `finally { vi.useRealTimers() }` prevents clock leakage).
+3. **Real tripwire — verified myself in a scratch worktree at `410bf60`** (scratch copy perturbed, repo never touched):
+   - Drift `since` to **30 days** → `1 failed | 7 passed` — `expected 1781611200000 to be 1752667200000`. Only the new pin fails; the other 7 stay green, which is precisely the detection gap round 1 identified.
+   - Drift **days→hours** (`IDLE_LOOKBACK_DAYS · 3_600_000`) → `1 failed | 7 passed`.
+   - Unperturbed → `8 passed (8)`.
+   The "green from start" label in the test name is accurate (row #7 was specified as a pin, not a red-first case) and now backed by demonstrated red-on-drift behavior.
+4. **Handoff amendment honesty:** the `idle-margin-bug3-lane.md` correction explicitly names the round-1 claim an over-claim, states exactly what the old pin did and did not assert, describes the value-level pin, and is dated 2026-07-16. The original (inaccurate) round-1 text is preserved above the correction rather than rewritten — appropriate for an audit trail. Honest.
+
+**Full gate (run by reviewer on `410bf60`):**
+
+```
+pnpm lint       → ✔ No ESLint warnings or errors
+pnpm typecheck  → tsc --noEmit, clean (exit 0)
+pnpm test       → Test Files 113 passed (113) · Tests 1027 passed (1027)
+```
+
+The +1 test vs round 1 (1026 → 1027) is the new pin, as claimed. No unhandled-error block after the summary (stderr stack fragments come from intentional loader-throw/SWR tests, same as round 1).
+
+### Standing items (unchanged from round 1, non-blocking)
+
+- Issue 2 (measurement-plan metric #2 — synthetic wall-time harness deferred to `handoff: manual` without receipts) stands as recorded; the human should run or explicitly waive it before merge to `main`.
+- Round-1 nits stand: stale round-1 text inside the plan document itself (Affected-files "drop `gte`", TDD row #1 "no `gte`"); direct `prisma` import in `app/history/page.tsx` for the probe (plan-sanctioned); `docs/API.md` no-change verification lives only in the T6 commit message.
+
+Blocker 1 is genuinely closed: the pin now makes the bug-3 lookback bound machine-checked against both magnitude drift and unit drift, sourced from the single lib constant, and I reproduced its red behavior myself. No new findings.
+
+VERDICT: APPROVE
