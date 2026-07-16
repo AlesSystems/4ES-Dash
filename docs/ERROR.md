@@ -38,6 +38,7 @@ Rules:
 | ERR-0021 | 2026-07-15 | frontend | High | First paint of every route gated on the un-suspended shell — 3 limiter-serialized Steam calls (~500 ms cold floor, +5.25 s on a transient) blocked document flush | Fixed |
 | ERR-0022 | 2026-07-15 | frontend,db | High | `/library?multiplayer=1` recomputed slow-changing Store reference data live on the request path — one `appdetails` call per owned game, limiter-serialized (~16.3 s cold @ N=65, linear in library size) | Fixed |
 | ERR-0023 | 2026-07-15 | db,frontend | High | Insights/history read paths issued unbounded steamId-only snapshot scans (composite indexes never pruned) and recomputed every aggregate per request; post-merge, the bounded YiR scan silently starved bug-2's pre-year baseline | Fixed |
+| ERR-0024 | 2026-07-16 | jobs | High | Nightly/onboarding `recordAchievementUnlocks` fanned out over the ENTIRE achievement library (up to 3 rate-limited calls/game) inside a platform-capped function window — silent stream/job truncation as libraries grow | Fixed |
 
 **Allowed values**
 
@@ -575,6 +576,27 @@ Part (a) — moving the flag-gated SteamSpy-tag enrichment off the render path i
 **Where else this assumption may be wrong:** Any future reader of `PlaytimeSnapshot`/`AchievementSnapshot`/`AchievementUnlock` (the rule is now in docs/BACKEND.md "Bounded snapshot reads"); nightly-precompute escalation stays available if the `db-rowcount` gated check ever shows multi-second bounded scans. Cross-refs: ERR-0019 (baseline semantics preserved), ERR-0020 (bug-3's bounds adopted), ERR-0010/0011 (precompute lineage).
 
 **Prevented by:** Mock-capture tests pinning every bound (`{gte,lt}` + separate baseline fetch, `unlockedAt` window, `distinct`, windowed `since` + flooring); the faithful two-query mock in `tests/unit/insights-repo-year-in-review.test.ts` (pre-year rows reachable only via the baseline path); bucket-completeness test (red if `since` is unfloored); `tests/unit/insights-cache.test.ts` (warm-cache zero-Prisma, key isolation incl. threshold, dismissal immediacy, SWR preserved); bug-1/2/3 suites green throughout.
+
+---
+
+### ERR-0024 — Unbounded achievement-unlock fan-out in a platform-capped job window (silent truncation)
+
+**Date:** 2026-07-16
+**Module:** jobs
+**Severity:** High
+**Status:** Fixed
+
+**Symptom:** The nightly snapshot job and the first-login onboarding backfill both call `recordAchievementUnlocks` with no `limit`, which selected **every** achievement-bearing game as a candidate (`candidates = all`). Each cold game costs up to 3 `steamLimiter.acquire()` calls at 250 ms each, so the tail grows linearly and unboundedly with library size (~75 s @ M=100) inside a function window that is hard-capped by the platform. The failure mode is **silent truncation**: the serverless window expires mid-loop, later games are simply never recorded that night (nightly) or the onboarding stream is cut with partial data — no error, no signal (STEAM-7/COMP-6, shared tail of STEAM-8/COMP-5; `wayline/optimization/plan/PLAN-theme-5-background-jobs.md`).
+
+**Root cause:** Issue #91 criterion #6 ("records unlock events for ALL achievement games") was implemented as *single-run* completeness, so the omitted-`limit` path had no per-invocation budget at all — the one library-linear external fan-out left after ERR-0003/ERR-0017 bounded the interactive paths, sitting in exactly the place (a background job window) where nothing surfaces the overrun.
+
+**Fix (theme-5 T1):** The unbounded code path is removed. `recordAchievementUnlocks` without an explicit `limit` now processes the union of a **hot set** (top-20 by two-week playtime via the new pure `topGamesByTwoWeekPlaytime` — recent activity is recorded every night) and one **deterministic day-keyed rotation window** of ≤ `ACHIEVEMENT_UNLOCK_NIGHTLY_LIMIT` (40) remaining games (`rotationWindowForDay`: remaining games sorted by `appId`, `ceil(R/40)` windows, index = `dayOfYear(utcDayKey()) mod windowCount` — stateless, no migration, idempotent same-day). Criterion #6 is explicitly weakened to **eventual completeness** (full coverage every `ceil(R/40)` nights; rows carry Steam's real `unlockedAt`, so late recording writes identical rows — delayed, never lost; nothing fabricated). The explicit-`limit` resync path is byte-identical to before (ERR-0017's bound not regressed). Docstring, `docs/ACCEPTANCE.md` (#6 companion note incl. the fresh-user convergence window), `docs/BACKEND.md`, and `docs/DATA_MODEL.md` updated in the open.
+
+**Generalized rule (class rule, generalizing ERR-0003 to jobs):** Unbounded background fan-out in a platform-capped window truncates **silently** — every job fan-out must carry an explicit per-invocation budget (a constant, not a function of dataset size) and its invoking route/page an explicit `maxDuration`; completeness requirements that exceed the budget must be met by *provable convergence across runs* (deterministic rotation/cursor), never by hoping one run fits the window.
+
+**Where else this assumption may be wrong:** The same job window still runs the 2N store passes (`refreshLibraryValueAggregate` + `refreshGameStoreData`) — library-linear, explicitly deferred to the gated STEAM-6 fold decision (theme-5 plan, T3 timings decide); the onboarding invocation cap + `maxDuration` land in theme-5 T2/T3. Any future per-user job pass (friends sync, rarity refresh) inherits this rule.
+
+**Prevented by:** `tests/unit/snapshot-achievement-unlocks.test.ts` — budget cap (≤ 20 + 40 fetches on the no-limit path), hot-set inclusion regardless of window, pure-helper cycle-coverage/idempotence proofs, the rewritten criterion-#6 pin (eventual completeness over one simulated cycle; red if anyone restores single-run semantics or breaks rotation), and the explicit-limit characterization pin (red if the resync bound regresses).
 
 ---
 

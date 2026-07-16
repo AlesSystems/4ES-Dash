@@ -25,6 +25,26 @@ import type { OwnedGame } from '@/lib/steam/schemas';
 /** How many of the most-played achievement games to snapshot unlock counts for. */
 export const ACHIEVEMENT_SNAPSHOT_LIMIT = 20;
 
+/**
+ * Nightly budget for the unlock-event recorder's rotation window (theme-5 T1).
+ * A fan-out bound, NOT a TTL — it does not belong in `server/cache/ttl.ts`.
+ * Each cold game costs up to 3 rate-limited Steam calls (250 ms each), so the
+ * omitted-`limit` path of {@link recordAchievementUnlocks} is capped at
+ * `(hot set 20 + this) × 3 × 250 ms` per invocation regardless of library size.
+ * Proposed value 40 — the FINAL value is gated on the prod `db-rowcount` /
+ * `platform-tier` checks (wayline theme-5 plan): it must satisfy
+ * `(20 + LIMIT) × 3 × 250 ms ≪ effective function timeout` with margin for the
+ * store passes.
+ */
+export const ACHIEVEMENT_UNLOCK_NIGHTLY_LIMIT = 40;
+
+/**
+ * Size of the nightly "hot set": the top games by TWO-WEEK playtime that are
+ * recorded every night regardless of the rotation window, so games where new
+ * unlocks actually happen are never delayed by rotation.
+ */
+const ACHIEVEMENT_UNLOCK_HOT_SET_SIZE = 20;
+
 export interface SnapshotResult {
   /** The Steam ID the snapshot ran for. */
   steamId: string;
@@ -147,8 +167,9 @@ export async function runSnapshotForUser(steamId: string): Promise<SnapshotResul
 
   const achievementRowsInserted = await snapshotAchievements(resolvedSteamId, games, dayKey);
 
-  // Record per-achievement unlock EVENTS for ALL achievement-bearing games.
-  // Best-effort: never fails the snapshot.
+  // Record per-achievement unlock EVENTS for a budgeted, rotating subset of
+  // achievement-bearing games (hot set + day-keyed window — see
+  // recordAchievementUnlocks). Best-effort: never fails the snapshot.
   try {
     await recordAchievementUnlocks(resolvedSteamId, games);
   } catch (err) {
@@ -325,18 +346,98 @@ async function upsertUnlockEvents(
 }
 
 /**
- * Records per-achievement unlock events (#91) for ALL achievement-bearing games
- * of `steamId`, via the cached, rate-limited achievement repository. Recording
- * EVERY such game (not just the top-N played) is what makes criterion #6 hold —
- * an unlock in a game outside the most-played set still counts in Year-in-Review.
+ * Return the top `limit` games by TWO-WEEK playtime, descending, falling back
+ * to total playtime and then name for stable ordering. Does not mutate the
+ * input. Deliberately DISTINCT from `topGamesByPlaytime` (`lib/games/select.ts`),
+ * which sorts by total playtime only and keeps serving the explicit-`limit`
+ * resync branch — this helper selects the nightly "hot set": the games where
+ * NEW unlocks actually happen (recent activity), which must be recorded every
+ * night regardless of the rotation window.
+ */
+export function topGamesByTwoWeekPlaytime(games: OwnedGame[], limit: number): OwnedGame[] {
+  return [...games]
+    .sort(
+      (a, b) =>
+        b.playtime.twoWeeks - a.playtime.twoWeeks ||
+        b.playtime.total - a.playtime.total ||
+        a.name.localeCompare(b.name),
+    )
+    .slice(0, limit);
+}
+
+/**
+ * Deterministic day-keyed rotation window over a pre-sorted appId list (theme-5
+ * T1). Pure function of `(sortedAppIds, dayKey)`: the list is split into
+ * `ceil(R / ACHIEVEMENT_UNLOCK_NIGHTLY_LIMIT)` contiguous windows and the
+ * window at `dayOfYear(dayKey) mod windowCount` is returned. Properties:
+ * same day ⇒ same window (idempotent re-run); consecutive days ⇒ successive
+ * windows; every appId appears in exactly one window per cycle, so full
+ * coverage is guaranteed every `ceil(R/LIMIT)` days. Stateless by design —
+ * no cursor column, no migration.
+ */
+export function rotationWindowForDay(sortedAppIds: number[], dayKey: Date): number[] {
+  if (sortedAppIds.length === 0) return [];
+  const windowCount = Math.ceil(sortedAppIds.length / ACHIEVEMENT_UNLOCK_NIGHTLY_LIMIT);
+  const windowIndex = dayOfYearUtc(dayKey) % windowCount;
+  const start = windowIndex * ACHIEVEMENT_UNLOCK_NIGHTLY_LIMIT;
+  return sortedAppIds.slice(start, start + ACHIEVEMENT_UNLOCK_NIGHTLY_LIMIT);
+}
+
+/** 1-based UTC day-of-year, used as the rotation phase. */
+function dayOfYearUtc(d: Date): number {
+  const startOfYear = Date.UTC(d.getUTCFullYear(), 0, 1);
+  return Math.floor((d.getTime() - startOfYear) / 86_400_000) + 1;
+}
+
+/**
+ * Budgeted nightly candidate set for the omitted-`limit` path: the union of
+ * the hot set (top-{@link ACHIEVEMENT_UNLOCK_HOT_SET_SIZE} by two-week
+ * playtime) and tonight's rotation window over the REMAINING achievement games
+ * (sorted deterministically by appId). Size ≤ 20 + ACHIEVEMENT_UNLOCK_NIGHTLY_LIMIT.
+ */
+function nightlyUnlockCandidates(all: OwnedGame[], dayKey: Date): OwnedGame[] {
+  const hot = topGamesByTwoWeekPlaytime(all, ACHIEVEMENT_UNLOCK_HOT_SET_SIZE);
+  const hotIds = new Set(hot.map((g) => g.appId));
+  const rest = all.filter((g) => !hotIds.has(g.appId)).sort((a, b) => a.appId - b.appId);
+  const windowIds = new Set(
+    rotationWindowForDay(
+      rest.map((g) => g.appId),
+      dayKey,
+    ),
+  );
+  return [...hot, ...rest.filter((g) => windowIds.has(g.appId))];
+}
+
+/**
+ * Records per-achievement unlock events (#91) for the achievement-bearing games
+ * of `steamId`, via the cached, rate-limited achievement repository.
+ *
+ * Candidate selection contract (theme-5 T1):
+ * - `limit` provided (interactive resync path): top-`limit` by TOTAL playtime
+ *   via `topGamesByPlaytime` — unchanged, byte-identical to the shipped
+ *   bounded resync behavior (bug-04-adjacent; must not regress).
+ * - `limit` omitted (nightly job / onboarding): a BUDGETED, rotating subset —
+ *   the hot set (top-20 by two-week playtime, so recent activity is recorded
+ *   every night) plus one deterministic day-keyed rotation window of at most
+ *   {@link ACHIEVEMENT_UNLOCK_NIGHTLY_LIMIT} of the remaining games
+ *   ({@link rotationWindowForDay}, keyed by {@link utcDayKey}). Per-invocation
+ *   limiter cost is therefore a CONSTANT (≤ (20 + LIMIT) × 3 acquires),
+ *   independent of library size.
+ *
+ * Criterion #6 holds as EVENTUAL completeness: every achievement game —
+ * including ones outside any top-played set — is covered within one rotation
+ * cycle (`ceil(R / ACHIEVEMENT_UNLOCK_NIGHTLY_LIMIT)` nights), never dropped.
+ * `unlockedAt` is Steam's real timestamp, so late recording writes identical
+ * rows — unlocks are delayed, not lost, and nothing is fabricated. A fresh
+ * user's historical unlocks (and prior years) converge over the same horizon
+ * instead of populating in a single unbounded run.
+ *
  * This per-game fan-out is deliberately in the nightly JOB / onboarding flow,
- * never on an interactive request path (architecture: heavy work lives in jobs);
- * `getGameAchievements` is cached + single-flight, so games already fetched for
- * the cumulative-count pass are not re-fetched. Used by the onboarding backfill
- * too, so a brand-new user's EXISTING unlocks (and prior years) populate
- * immediately, attributed by their real `unlockedAt`. Unavailable games are
- * skipped; a single game's failure does not abort the rest. Returns the number
- * of unlock rows recorded.
+ * never on an interactive request path (architecture: heavy work lives in
+ * jobs); `getGameAchievements` is cached + single-flight, so games already
+ * fetched for the cumulative-count pass are not re-fetched. Unavailable games
+ * are skipped; a single game's failure does not abort the rest. Returns the
+ * number of unlock rows recorded.
  */
 export async function recordAchievementUnlocks(
   steamId: string,
@@ -344,9 +445,10 @@ export async function recordAchievementUnlocks(
   limit?: number,
 ): Promise<number> {
   const all = games.filter((g) => g.hasAchievements);
-  // When a limit is provided (interactive resync path), cap to the top-N by
-  // playtime so the fan-out is bounded. When omitted (nightly), process all.
-  const candidates = limit !== undefined ? topGamesByPlaytime(all, limit) : all;
+  // Explicit limit (interactive resync path): top-N by total playtime —
+  // unchanged. Omitted (nightly/onboarding): budgeted hot set + rotation window.
+  const candidates =
+    limit !== undefined ? topGamesByPlaytime(all, limit) : nightlyUnlockCandidates(all, utcDayKey());
 
   let total = 0;
   for (const game of candidates) {
