@@ -395,6 +395,75 @@ describe('aggregateLibrary – recentUnlocks', () => {
     expect(summary.recentUnlocks).toHaveLength(2);
   });
 
+  // -------------------------------------------------------------------------
+  // COMP-7 pins (theme-4 T3) — pinned tripwire tests, green from start.
+  // These behavior tests pin ordering + cutoff semantics while the sort
+  // comparator's redundant Date re-parse is removed (verified by diff review).
+  // -------------------------------------------------------------------------
+
+  const makeUnlockedItem = (apiName: string, unlockedAt: string): MergedAchievement => ({
+    apiName,
+    displayName: apiName,
+    description: '',
+    iconUrl: 'https://example.com/i.jpg',
+    unlocked: true,
+    unlockedAt,
+    globalPercent: null,
+  });
+
+  it('recentUnlocks sorts without re-parsing dates: 3 in-window unlocks return newest-first (pinned tripwire — green from start)', () => {
+    const now = new Date('2024-01-10T00:00:00.000Z');
+    const game: GameAchievements = {
+      unlocked: 3,
+      total: 3,
+      percent: 100,
+      items: [
+        makeUnlockedItem('MID', '2024-01-07T00:00:00.000Z'),
+        makeUnlockedItem('OLDEST', '2024-01-05T00:00:00.000Z'),
+        makeUnlockedItem('NEWEST', '2024-01-09T00:00:00.000Z'),
+      ],
+    };
+
+    const summary = aggregateLibrary([game], now);
+    expect(summary.recentUnlocks.map((i) => i.apiName)).toEqual(['NEWEST', 'MID', 'OLDEST']);
+  });
+
+  it('sorts two unlocks 1 minute apart inside the window newest-first (pinned tripwire — green from start)', () => {
+    const now = new Date('2024-01-10T00:00:00.000Z');
+    const game: GameAchievements = {
+      unlocked: 2,
+      total: 2,
+      percent: 100,
+      items: [
+        makeUnlockedItem('EARLIER', '2024-01-08T12:00:00.000Z'),
+        makeUnlockedItem('LATER', '2024-01-08T12:01:00.000Z'),
+      ],
+    };
+
+    const summary = aggregateLibrary([game], now);
+    expect(summary.recentUnlocks.map((i) => i.apiName)).toEqual(['LATER', 'EARLIER']);
+  });
+
+  it('includes an unlock exactly at the 7-day cutoff boundary (>= cutoff inclusive) (pinned tripwire — green from start)', () => {
+    const now = new Date('2024-01-10T00:00:00.000Z');
+    // Exactly 7 days before `now` — must be included (>= cutoff, not > cutoff).
+    const boundary = '2024-01-03T00:00:00.000Z';
+    // One millisecond older than the cutoff — must be excluded.
+    const justOutside = '2024-01-02T23:59:59.999Z';
+    const game: GameAchievements = {
+      unlocked: 2,
+      total: 2,
+      percent: 100,
+      items: [
+        makeUnlockedItem('AT_BOUNDARY', boundary),
+        makeUnlockedItem('JUST_OUTSIDE', justOutside),
+      ],
+    };
+
+    const summary = aggregateLibrary([game], now);
+    expect(summary.recentUnlocks.map((i) => i.apiName)).toEqual(['AT_BOUNDARY']);
+  });
+
   it('uses current date as default reference for the 7-day window', () => {
     // An achievement unlocked 1 second ago should appear in recentUnlocks
     const justNow = new Date(Date.now() - 1000).toISOString();
