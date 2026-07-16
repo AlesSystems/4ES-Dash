@@ -45,6 +45,28 @@ export const ACHIEVEMENT_UNLOCK_NIGHTLY_LIMIT = 40;
  */
 const ACHIEVEMENT_UNLOCK_HOT_SET_SIZE = 20;
 
+/**
+ * Wall-clock duration of each pass of `runSnapshotForUser`, in milliseconds
+ * (theme-5 T3). Persisted per user in `JobRun.payload` so every cron run
+ * produces the data the wayline gated checks (`jobrun-timing`, real `M`/`N`,
+ * platform tier) need for free — and the deferred STEAM-6 store-pass fold is
+ * promoted or dismissed on `libraryValueMs`/`gameStoreMs`, not guesses.
+ * Measured with `Date.now()`; best-effort passes record their elapsed time in
+ * a `finally` block, so a throwing pass still yields a non-negative value.
+ */
+export interface SnapshotPassTimings {
+  /** Profile fetch + user upsert + playtime rows (the non-optional core). */
+  playtimeMs: number;
+  /** Cumulative achievement-count pass (`snapshotAchievements`). */
+  achievementSnapshotMs: number;
+  /** Per-achievement unlock-event pass (`recordAchievementUnlocks`). */
+  unlockRecordingMs: number;
+  /** Library-value aggregate refresh (store price fan-out). */
+  libraryValueMs: number;
+  /** Per-game store metadata refresh (`refreshGameStoreData`). */
+  gameStoreMs: number;
+}
+
 export interface SnapshotResult {
   /** The Steam ID the snapshot ran for. */
   steamId: string;
@@ -58,6 +80,12 @@ export interface SnapshotResult {
   clamped: number;
   /** Achievement-count rows written this run. */
   achievementRowsInserted: number;
+  /**
+   * Per-pass wall-clock timings (theme-5 T3). OPTIONAL for readers — the
+   * field is additive and old `JobRun.payload` rows predate it, so consumers
+   * must never assume its presence. The current writer always sets it.
+   */
+  timings?: SnapshotPassTimings;
 }
 
 /**
@@ -107,6 +135,11 @@ export function clampPlaytime(
  * Throws on unrecoverable failure (private profile, network error, etc.).
  */
 export async function runSnapshotForUser(steamId: string): Promise<SnapshotResult> {
+  // Per-pass wall-clock timing (theme-5 T3). `Date.now()` is sufficient here:
+  // passes span seconds-to-minutes of rate-limited I/O, not sub-ms code. The
+  // best-effort passes below record their elapsed time in `finally` so a
+  // throwing pass still yields a non-negative duration in JobRun.payload.
+  const playtimeStart = Date.now();
   const { profile, games } = await getProfile(steamId);
   const resolvedSteamId = profile.steamId;
   const dayKey = utcDayKey();
@@ -164,30 +197,47 @@ export async function runSnapshotForUser(steamId: string): Promise<SnapshotResul
     });
   });
   await prisma.$transaction(upserts);
+  const playtimeMs = Date.now() - playtimeStart;
 
+  const achievementSnapshotStart = Date.now();
   const achievementRowsInserted = await snapshotAchievements(resolvedSteamId, games, dayKey);
+  const achievementSnapshotMs = Date.now() - achievementSnapshotStart;
 
   // Record per-achievement unlock EVENTS for a budgeted, rotating subset of
   // achievement-bearing games (hot set + day-keyed window — see
-  // recordAchievementUnlocks). Best-effort: never fails the snapshot.
+  // recordAchievementUnlocks). Best-effort: never fails the snapshot. The
+  // timing is captured in `finally` so a throwing pass still reports its
+  // elapsed time (theme-5 T3 criterion — never an absent key).
+  let unlockRecordingMs = 0;
+  const unlockRecordingStart = Date.now();
   try {
     await recordAchievementUnlocks(resolvedSteamId, games);
   } catch (err) {
     console.error('[snapshot] achievement unlock recording failed steamId=%s', resolvedSteamId, err);
+  } finally {
+    unlockRecordingMs = Date.now() - unlockRecordingStart;
   }
 
-  // Pre-compute the library-value aggregate. Best-effort.
+  // Pre-compute the library-value aggregate. Best-effort; timed in `finally`.
+  let libraryValueMs = 0;
+  const libraryValueStart = Date.now();
   try {
     await refreshLibraryValueAggregate(resolvedSteamId, games);
   } catch (err) {
     console.error('[snapshot] library-value aggregate refresh failed steamId=%s', resolvedSteamId, err);
+  } finally {
+    libraryValueMs = Date.now() - libraryValueStart;
   }
 
-  // Persist per-game genres + current price. Best-effort.
+  // Persist per-game genres + current price. Best-effort; timed in `finally`.
+  let gameStoreMs = 0;
+  const gameStoreStart = Date.now();
   try {
     await refreshGameStoreData(games);
   } catch (err) {
     console.error('[snapshot] game store data refresh failed steamId=%s', resolvedSteamId, err);
+  } finally {
+    gameStoreMs = Date.now() - gameStoreStart;
   }
 
   return {
@@ -197,6 +247,7 @@ export async function runSnapshotForUser(steamId: string): Promise<SnapshotResul
     rowsInserted,
     clamped,
     achievementRowsInserted,
+    timings: { playtimeMs, achievementSnapshotMs, unlockRecordingMs, libraryValueMs, gameStoreMs },
   };
 }
 

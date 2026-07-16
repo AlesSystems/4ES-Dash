@@ -10,7 +10,7 @@
 
 import { describe, it, expect, beforeEach, afterAll, afterEach, vi } from 'vitest';
 import { http, HttpResponse } from 'msw';
-import { POST } from '@/app/api/cron/snapshot/route';
+import { POST, maxDuration } from '@/app/api/cron/snapshot/route';
 import { prisma } from '@/server/db';
 import { clearCache } from '@/server/cache';
 import { getFirstSeenDates } from '@/server/repositories/snapshots';
@@ -42,6 +42,15 @@ beforeEach(async () => {
 afterAll(async () => {
   await resetDb();
   await prisma.$disconnect();
+});
+
+describe('POST /api/cron/snapshot — route config', () => {
+  it('exports an explicit maxDuration (theme-5 T3; provisional 300, platform-tier gated)', () => {
+    // Pin: the nightly window is intentional, never the platform default.
+    // The value itself is provisional — drops to 60 if the platform-tier
+    // gated check reports Hobby (see route comment / docs/DEPLOYMENT.md).
+    expect(maxDuration).toBe(300);
+  });
 });
 
 describe('POST /api/cron/snapshot — auth', () => {
@@ -122,6 +131,36 @@ describe('POST /api/cron/snapshot — snapshot run', () => {
     expect(job?.status).toBe('ok');
     expect(job?.finishedAt).not.toBeNull();
     expect(job?.payload).toBeTruthy();
+  });
+
+  it('JobRun.payload round-trips timings', async () => {
+    // Theme-5 T3: per-pass wall-clock timings are recorded per user and
+    // surfaced through the persisted JobRun.payload (additive — top-level
+    // summed keys unchanged).
+    const res = await post({ 'x-cron-secret': SECRET });
+    expect(res.status).toBe(200);
+
+    const job = await prisma.jobRun.findFirst({ where: { name: 'snapshot' } });
+    const payload = JSON.parse(job?.payload ?? 'null') as {
+      usersProcessed: number;
+      results: Array<{ timings?: Record<string, unknown> }>;
+    } | null;
+    expect(payload).not.toBeNull();
+    expect(payload?.usersProcessed).toBe(1);
+
+    const timings = payload?.results[0]?.timings;
+    expect(timings).toBeDefined();
+    for (const key of [
+      'playtimeMs',
+      'achievementSnapshotMs',
+      'unlockRecordingMs',
+      'libraryValueMs',
+      'gameStoreMs',
+    ]) {
+      const value = timings?.[key];
+      expect(typeof value, `timings.${key}`).toBe('number');
+      expect(value as number, `timings.${key}`).toBeGreaterThanOrEqual(0);
+    }
   });
 
   it('populates Game.priceRefreshedAt and genres for owned games (proves refreshGameStoreData ran)', async () => {
