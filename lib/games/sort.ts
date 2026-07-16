@@ -87,6 +87,29 @@ export function filterByStatus(games: LibraryGame[], status: StatusFilter): Libr
   return games.filter((g) => g.playtime.total > 0);
 }
 
+/** Games revealed per "Load more" click — the server-side page size for `/library`. */
+export const PAGE_SIZE = 24;
+
+/** Hard ceiling for `?limit=` — bounds the worst-case payload a URL can request. */
+export const MAX_LIMIT = 960;
+
+/**
+ * Coerce an untrusted `?limit=` value to a bounded page limit.
+ *
+ * Invalid / missing / non-positive → {@link PAGE_SIZE}. Valid numbers are
+ * clamped to {@link MAX_LIMIT} and snapped DOWN to a multiple of
+ * {@link PAGE_SIZE} (a hand-edited `?limit=25` shows 24 — never more than the
+ * URL asked for; our own UI only writes multiples of 24). Follows the shipped
+ * non-Zod `parseSortKey`/`parseStatusKey` convention: invalid → default,
+ * never throw.
+ */
+export function parseLimitParam(value: string | null | undefined): number {
+  const n = value != null && value.trim() !== '' ? Number(value) : NaN;
+  if (!Number.isFinite(n) || n < PAGE_SIZE) return PAGE_SIZE;
+  const clamped = Math.min(Math.floor(n), MAX_LIMIT);
+  return clamped - (clamped % PAGE_SIZE);
+}
+
 /** Coerce an untrusted `?sort=` value to a valid {@link SortKey} (default `playtime`). */
 export function parseSortKey(value: string | null | undefined): SortKey {
   return value != null && (SORT_KEYS as readonly string[]).includes(value)

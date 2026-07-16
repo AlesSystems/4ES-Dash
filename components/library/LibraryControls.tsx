@@ -14,6 +14,13 @@ import {
 } from '@/lib/games/sort';
 import { cn } from '@/lib/utils';
 
+// Keys that change the visible result set — changing one invalidates the
+// current `?limit=` pagination depth, so updateUrl drops it. `view` is
+// deliberately absent: a grid/list toggle only switches tile markup and must
+// preserve the loaded count (matches the pre-URL-state remount-key behavior,
+// which never included view).
+const SET_CHANGING_KEYS: readonly string[] = ['q', 'status', 'sort', 'multiplayer'];
+
 export interface LibraryControlsProps {
   sort: SortKey;
   query: string;
@@ -61,6 +68,11 @@ export function LibraryControls({
         params.set(key, value);
       } else {
         params.delete(key);
+      }
+      // A set-changing key invalidates pagination depth — drop a stale ?limit=
+      // so the next render ships the default page again.
+      if (SET_CHANGING_KEYS.includes(key)) {
+        params.delete('limit');
       }
       const qs = params.toString();
       router.replace(qs ? `${pathname}?${qs}` : pathname);

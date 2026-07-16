@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   acquisitionDatesUnavailable,
   filterGames,
+  parseLimitParam,
   parseSortKey,
   sortGames,
   toLibraryTile,
@@ -98,6 +99,30 @@ describe('toLibraryTile', () => {
       hasAchievements: true,
       playtime: { total: 120, twoWeeks: 30 },
     });
+  });
+});
+
+describe('parseLimitParam', () => {
+  it('parseLimitParam defaults, clamps, and snaps to page size', () => {
+    // Missing / garbage / negative / non-numeric → default page size (24).
+    expect(parseLimitParam(undefined)).toBe(24);
+    expect(parseLimitParam(null)).toBe(24);
+    expect(parseLimitParam('abc')).toBe(24);
+    expect(parseLimitParam('-5')).toBe(24);
+    expect(parseLimitParam('0')).toBe(24);
+    // Valid multiples of 24 pass through.
+    expect(parseLimitParam('24')).toBe(24);
+    expect(parseLimitParam('48')).toBe(48);
+    expect(parseLimitParam('480')).toBe(480);
+    // Snap rule (documented): non-multiples snap DOWN to the nearest multiple
+    // of 24 — a hand-edited `?limit=25` shows 24, never more than the URL
+    // asked for. Our own UI only ever writes multiples of 24.
+    expect(parseLimitParam('25')).toBe(24);
+    expect(parseLimitParam('47')).toBe(24);
+    expect(parseLimitParam('49')).toBe(48);
+    // Hard max 960 (clamped before snapping; 960 is itself a multiple of 24).
+    expect(parseLimitParam('99999')).toBe(960);
+    expect(parseLimitParam('960')).toBe(960);
   });
 });
 
