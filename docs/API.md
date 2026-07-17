@@ -334,14 +334,37 @@ Cron-only. Snapshots playtime (and a bounded set of achievement-unlock counts) f
 
 **Response 200**
 
+The batch result: top-level numeric keys are summed across all processed users
+(backward compatible with the original single-user shape); `results` carries the
+per-user detail. `results[*].timings` (additive, theme-5 T3) reports the
+wall-clock milliseconds of each snapshot pass and is also persisted in
+`JobRun.payload` — readers must treat it as optional (rows written before the
+field existed do not have it).
+
 ```json
 {
-  "steamId": "76561198000000000",
-  "date": "2026-06-16",
   "gamesProcessed": 65,
   "rowsInserted": 65,
   "clamped": 0,
-  "achievementRowsInserted": 20
+  "achievementRowsInserted": 20,
+  "usersProcessed": 1,
+  "results": [
+    {
+      "steamId": "76561198000000000",
+      "date": "2026-06-16",
+      "gamesProcessed": 65,
+      "rowsInserted": 65,
+      "clamped": 0,
+      "achievementRowsInserted": 20,
+      "timings": {
+        "playtimeMs": 812,
+        "achievementSnapshotMs": 15211,
+        "unlockRecordingMs": 30977,
+        "libraryValueMs": 16480,
+        "gameStoreMs": 16702
+      }
+    }
+  ]
 }
 ```
 

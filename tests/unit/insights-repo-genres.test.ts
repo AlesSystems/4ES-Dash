@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getGenreBreakdown } from '@/server/repositories/insights/genres';
+import { clearCache } from '@/server/cache';
 
 const mockPrisma = vi.hoisted(() => ({
   ownedGame: { findMany: vi.fn() },
@@ -17,17 +18,14 @@ vi.mock('@/server/repositories/store', () => ({
   getGameStoreMetadata: mockGetMetadata,
   getGameStorePrice: vi.fn(),
 }));
-vi.mock('@/server/cache', () => ({
-  cache: vi.fn(async (_key: unknown, _ttl: unknown, loader: () => Promise<unknown>) => {
-    const value = await loader();
-    return { value, stale: false };
-  }),
-  cacheKey: vi.fn((...args: string[]) => args.join(':')),
-  TTL: { storeMetadata: 604800, steamSpy: 86400 },
-}));
+// The REAL cache module is used (getGenreBreakdown is wrapped in it, T5) —
+// clearCache() in beforeEach keeps every case cold so Prisma call counts and
+// per-test seeds stay accurate (plan: binding). ENABLE_STEAMSPY is false, so
+// the inner SteamSpy cache path never fires here.
 
 beforeEach(() => {
   vi.clearAllMocks();
+  clearCache();
   mockPrisma.ownedGame.findMany.mockResolvedValue([]);
   mockPrisma.game.findMany.mockResolvedValue([]);
 });

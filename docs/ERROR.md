@@ -32,6 +32,13 @@ Rules:
 | ERR-0015 | 2026-06-28 | frontend | High | Library shows all games as "untouched" when Steam "Game details" privacy hides real playtime (heuristic: all zero + some lastPlayed) | Fixed |
 | ERR-0016 | 2026-06-28 | jobs | High | History week/month filters always empty — snapshot cron only targeted `STEAM_ID` env var, not all onboarded users | Fixed |
 | ERR-0017 | 2026-06-28 | frontend,jobs | High | Re-sync button spins forever: no try/catch on client; unbounded achievement fan-out on server; writes not atomic | Fixed |
+| ERR-0018 | 2026-07-06 | frontend | Medium | History page empty until snapshots span ≥2 week/month periods — single-period spans collapsed to 1 point and were discarded; page not onboarding-gated | Fixed |
+| ERR-0019 | 2026-07-06 | backend | High | Year-in-Review zeroes/under-counts current-year hours — playtime gain derived from the in-year (max − min) spread with no pre-year baseline | Fixed |
+| ERR-0020 | 2026-07-06 | frontend,db | High | Insights pages slow: whole page blocks on slowest await; duplicate getSessionUser waterfall on genres; unbounded PlaytimeSnapshot scans bypassed `@@index([steamId, date])` | Fixed |
+| ERR-0021 | 2026-07-15 | frontend | High | First paint of every route gated on the un-suspended shell — 3 limiter-serialized Steam calls (~500 ms cold floor, +5.25 s on a transient) blocked document flush | Fixed |
+| ERR-0022 | 2026-07-15 | frontend,db | High | `/library?multiplayer=1` recomputed slow-changing Store reference data live on the request path — one `appdetails` call per owned game, limiter-serialized (~16.3 s cold @ N=65, linear in library size) | Fixed |
+| ERR-0023 | 2026-07-15 | db,frontend | High | Insights/history read paths issued unbounded steamId-only snapshot scans (composite indexes never pruned) and recomputed every aggregate per request; post-merge, the bounded YiR scan silently starved bug-2's pre-year baseline | Fixed |
+| ERR-0024 | 2026-07-16 | jobs | High | Nightly/onboarding `recordAchievementUnlocks` fanned out over the ENTIRE achievement library (up to 3 rate-limited calls/game) inside a platform-capped function window — silent stream/job truncation as libraries grow | Fixed |
 
 **Allowed values**
 
@@ -433,6 +440,163 @@ Copy this block when adding a new entry. Replace every placeholder including the
 **Generalized rule:** Client islands that call server actions must always handle rejection — `useTransition` does not catch throws. Long-running background fan-outs must be bounded when called from interactive paths. Multi-table write sequences that must succeed atomically belong in `$transaction`.
 
 **Prevented by:** Unit tests on `ResyncButton` (error message + spinner-cleared); `account-settings` test for achievement limit arg; `onboarding-backfill` test asserting `$transaction` is called with a callback.
+
+---
+
+## ERR-0018
+
+**Date:** 2026-07-06
+**Module:** frontend
+**Severity:** Medium
+**Status:** Fixed
+
+**Title:** History page empty until snapshots span ≥2 week/month periods (the period cliff)
+
+**Symptoms:**
+1. A user with real recent play (e.g. 3 daily snapshots inside one ISO week) saw the "History is still building" empty state instead of a chart, even though play clearly happened.
+2. A signed-in-but-not-onboarded user (no snapshot rows) landed on "No history yet" instead of being routed to onboarding.
+
+**Root cause:** `aggregatePlaytime` (`lib/history/aggregate.ts`) bucketed only by ISO week or calendar month; a span that fell inside a single period produced exactly one point. `app/history/page.tsx` then discarded any `< 2`-point series as the empty state, so any short span (and every span inside one week/month) hit the cliff. Separately, the page did not gate on onboarding status like the genres page (ERR-0008), so a not-onboarded user saw a misleading empty state rather than `/onboarding`.
+
+**Fix:**
+1. `aggregatePlaytime` now falls back to **day-granularity** points when the requested week/month bucket collapses to `< 2` points and there are ≥2 distinct snapshot days. Day deltas are computed as `max(0, cumulative[day] − cumulative[prevDay])` per game (cumulative playtime is snapshotted ~once/day, so within-day MAX−MIN is 0), zero-filled across the day range. The summed minutes equal the bucketed total — no fabrication.
+2. `app/history/page.tsx` calls `getOnboardingStatus()` and `redirect('/onboarding')` for a `not-onboarded` viewer, before any snapshot read (ERR-0008 pattern).
+
+**Generalized rule:** A time-series aggregation whose UI requires ≥2 points must not let its bucket granularity be coarser than the data's own cadence — provide a finer-grained fallback for short spans so real activity is always drawable, and reserve the empty state for genuinely absent data. Any "my data" page that can render an empty state must first distinguish "not onboarded" (→ `/onboarding`) from "onboarded but empty" (ERR-0008).
+
+**Prevented by:** Data-layer unit tests in `tests/unit/history-aggregate.test.ts` (single-week and single-month spans yield ≥2 points with the total preserved) and page tests in `tests/unit/app/history-empty-state.test.tsx` (3 daily rows in one ISO week render a chart; not-onboarded viewer redirects to `/onboarding` without fetching snapshots).
+
+---
+
+### ERR-0019 — Year-in-Review zeroes/under-counts current-year hours
+
+**Date:** 2026-07-06
+**Module:** backend
+**Severity:** High
+**Status:** Fixed
+
+**Symptom:** The Year in Review page reported far fewer hours than the user actually played that year (and 0 for a game with a single in-year snapshot), even though the dashboard's totals were correct. A game with pre-year playtime 100 min and in-year snapshots 200 → 350 showed a 2025 total of 150 min instead of the real 250 min.
+
+**Root cause:** `lib/insights/year-in-review.ts#deltasByApp` computed each game's yearly playtime gain as `(max − min)` among only the snapshots whose UTC year matched the review year. `playtimeForever` is a cumulative monotonic counter, so the year's true gain is `(in-year max) − (the value at the last snapshot strictly before Jan 1)`. Deriving the floor from the in-year *minimum* silently discards every hour accrued before the first in-year sample and returns 0 when there is a single in-year snapshot — the exact ERR-0009 class (a cumulative-counter delta needs a sample bracketing the lower edge of the window). `getYearInReview` never fetched or passed a pre-year baseline.
+
+**Fix:** `computeYearInReview` now takes a `baselineByApp: Map<appId, playtimeForever>` (the last snapshot strictly before the year). New `playtimeDeltasByApp` computes `gain = max(0, inYearMax − (baseline ?? firstInYearSample))`, keeping the monotonic ≥0 clamp. `server/repositories/insights/year-in-review.ts` derives that baseline in-memory from the already-fetched snapshot rows (latest row per app dated before the UTC year boundary) — no extra query. When a contributing game has NO pre-year baseline (onboarded mid-year), the first in-year snapshot is used as a best-effort floor and the result carries a new `partialYear: boolean` caveat instead of a silent fabricated number (degrade-never-fabricate). The dead `deltasByApp` helper was removed.
+
+**Generalized rule:** To measure the *change* of a cumulative counter over a window, the floor must come from a sample taken at or before the window's start — never from the minimum sample *inside* the window, which under-counts and returns 0 with a single in-window sample. When the bracketing sample is missing, surface an explicit caveat, don't fabricate a value. (Same class as ERR-0009; the fixed `countUnlocksInYear` event-count is the sibling pattern.)
+
+**Where else this assumption may be wrong:** Any other "gained within period" metric from snapshot deltas that filters to the period before taking min/max — monthly/weekly playtime gain, achievement-count deltas, library-value change. Each needs a baseline sample from before the window's start.
+
+**Prevented by:** Pure-function tests asserting a positive year total from a pre-year baseline (200→350 with baseline 100 → 250), a single in-year snapshot with a baseline yielding a positive delta (not 0), and the `partialYear` caveat surfacing when no baseline exists; a repository test proving the baseline is derived from pre-Jan-1 rows and that a mid-year onboard flags `partialYear`.
+
+---
+
+## ERR-0020 — Insights pages slow: page-wide await block, duplicate session waterfall, unbounded snapshot scans
+
+**Date:** 2026-07-06 · **Module:** frontend, db · **Severity:** High · **Status:** Fixed
+
+**Symptom:** The `/insights/*` pages (genres, idle, cost-per-hour) were slow to first paint. Three flag-independent causes:
+
+1. Each page did a single top-level `await` for its slowest data source, so the entire page (heading, disclaimers, caveats) blocked until that query resolved — no streaming.
+2. The genres page ran the session lookup twice per render: `getOnboardingStatus() → getSessionUser()` then `getViewerSteamId() → getSessionUser()` — a duplicate `getServerSession` waterfall.
+3. `getIdleFlags`, `getYearInReview`, and `getAvailableReviewYears` queried `PlaytimeSnapshot` with `findMany({ where: { steamId } })` and no date bound, forcing a full-table steamId scan that never used `@@index([steamId, date])`.
+
+**Root cause:** The interactive render path awaited slow, unbounded work synchronously and re-resolved the session per helper. Snapshot reads were unbounded because the query shape never expressed a date range the composite index could serve.
+
+**Fix:**
+1. Each insights page keeps its static shell (heading + disclaimer/caveat) and streams its slow section inside its own `<Suspense fallback={<Skeleton/>}>` where the skeleton mirrors final layout geometry (no CLS).
+2. The genres page resolves `getSessionUser()` once and passes it through; `getOnboardingStatus(sessionUser?)` and `getViewerSteamId(sessionUser?)` accept an optional pre-fetched session and skip the fresh lookup when given one.
+3. Added the tightest date bound that preserves semantics: `getYearInReview` bounds the playtime scan to `[Jan 1 year, Jan 1 year+1)` UTC (the pure compute already filters to that year); `getIdleFlags` bounds to `IDLE_LOOKBACK_DAYS` (365) via `date: { gte }`. `getAvailableReviewYears` was intentionally left unbounded — a distinct-years query has no semantics-preserving date bound.
+
+Part (a) — moving the flag-gated SteamSpy-tag enrichment off the render path into the nightly job — was NOT done here; it is gated on an unattached Phase-1 human check (ENABLE_STEAMSPY prod value + timing).
+
+**Generalized rule:** On an interactive render path, never let the whole page block on its slowest data source — stream each slow section behind its own Suspense boundary with a geometry-matched skeleton. Resolve the session once per request and thread it through helpers instead of re-fetching. Every repository read against a snapshot table must express a date bound so the composite `(steamId, date)` index is usable — an unbounded `where: { steamId }` is a full-table scan.
+
+**Prevented by:** Repo unit tests asserting the mocked prisma `findMany` call includes a `where.date` bound (idle + year-in-review); auth/onboarding-gate tests asserting a passed session short-circuits the fresh lookup; a structural test asserting each insights page imports and renders a `<Suspense>` boundary with a fallback.
+
+---
+
+### ERR-0021 — First paint of every route gated on the un-suspended shell (3 limiter-serialized Steam calls)
+
+**Date:** 2026-07-15
+**Module:** frontend
+**Severity:** High
+**Status:** Fixed
+
+**Symptom:** Every route showed a blank tab until the shell's Steam I/O settled. Cold, the floor was ≈ 500 ms (three `steamLimiter` acquires serialized at 250 ms spacing) plus the last call's RTT; a single Steam transient added up to 5.25 s of retry backoff to first paint — on every route, since all routes inherit the root layout.
+
+**Root cause:** `app/layout.tsx` mounted async server components (`AppHeader`, `Sidebar` — plus `AuthControls`, a third async node embedded in the header) with no `<Suspense>` boundary anywhere in the shell. React cannot flush any byte of the document while un-suspended async children of the root layout are pending, so the shell's `getProfile`/`getLevel`/`getViewerSteamId` awaits sat on the first-paint critical path of every route (RSC-1/RSC-2, `wayline/optimization/plan/PLAN-theme-3-blocking-shell.md`).
+
+**Fix:** Geometry-matched `HeaderSkeleton`/`SidebarSkeleton` (sync server components; the async `AuthControls` slot is a static pulse placeholder — rendering it for real inside a fallback would make the fallback itself suspend and reinstate the coupling). `app/layout.tsx` wraps each shell component in its own `<Suspense>` with `{children}` outside both boundaries. Additionally, `/u/[steamId]` parallelizes the one sheddable pre-authz pair (`getSessionUser` ∥ privacy lookup) while `canViewProfile` still completes before any target-data fetch (RSC-8).
+
+**Generalized rule:** No un-suspended async component in a layout above `{children}` — every async RSC in a shell/layout must sit behind its own geometry-matched `<Suspense>` boundary, and a Suspense fallback must never contain an async server component. First paint must be structurally independent of upstream API health, not merely fast when caches are warm.
+
+**Where else this assumption may be wrong:** Insights pages — already fixed in bug-3's lane (ERR-0020, per-page Suspense); `/game/[appId]` — already correct (per-section boundaries; the repo's reference pattern). Any future layout-level async component (e.g. a Phase-6 account switcher) inherits this rule.
+
+**Prevented by:** Structural wiring test `tests/unit/shell-streaming.test.tsx` (exactly two boundaries, `{children}` outside — fails on any regression to direct mounts); geometry-equality tests (`tests/unit/header-skeleton.test.tsx`, `tests/unit/sidebar-skeleton.test.tsx`) pinning skeleton↔real class parity from both sides; degrade pin `tests/unit/shell-degrade.test.tsx` (Steam rejection → `—` placeholders, never a crash or fabricated zero).
+
+---
+
+### ERR-0022 — Multiplayer filter recomputed slow-changing Store reference data live on the request path
+
+**Date:** 2026-07-15
+**Module:** frontend, db
+**Severity:** High
+**Status:** Fixed
+
+**Symptom:** `/library?multiplayer=1` fired one live Store `appdetails` call per owned game via `Promise.all` in `getMultiplayerAppIds`; each call drained the capacity-1 / 250 ms `storeLimiter` serially — ~16.3 s cold at N=65 games, linear in library size (STEAM-1, `wayline/optimization/plan/PLAN-theme-2-external-fanouts.md`). The filter also contended with the nightly library-value pass on the same limiter.
+
+**Root cause:** Multiplayer classification was computed from **live** Store data on the request path even though its input (`categoryIds`) is slow-changing reference data the nightly job's `refreshGameStoreData` pass *already fetched* per game — and threw away. There is no batch `appdetails` endpoint (STEAM-9), so any request-path fan-out serializes at the limiter regardless of `Promise.all`.
+
+**Fix:** The repo's twice-proven precompute pattern (ERR-0010, ERR-0011): (1) nullable `Game.categoryIds` column (additive follow-up migration); (2) `refreshGameStoreData` persists `categoryIds` from the metadata it already holds — zero extra Store calls (pinned by a call-count tripwire test); on unavailable metadata the update **omits** the field (last-known-good; `null` on create; never `'[]'`, which would fabricate a positive non-multiplayer classification — a deliberate divergence from the genres `'[]'` reset); (3) `getMultiplayerAppIds` reads the DB in one `findMany` + the existing pure classifier — zero Store calls, `stale` pinned `false`, `null`/malformed rows into `missingCount`. Also in this lane: dedicated reference TTLs `achievementSchema` (7 d) / `achievementGlobal` (24 h) for the two `'global'`-scoped achievement caches (STEAM-2 residual — warm-instance win only, pending the bug-3 durable-cache decision).
+
+**Before/after:** Before — ~16.3 s cold at N=65 (receipt-verified expectation: N × 250 ms limiter floor), unbounded in N. After — one indexed DB read + the retained `getProfile` (typically a same-render cache hit); target < 100 ms, independent of N; zero Store calls proven by the rewritten integration suite (`tests/integration/multiplayer-repo.test.ts` asserts 0 `appdetails` requests on every test). Live wall-clock confirmation is a manual measurement (`wayline/optimization/measurements/theme-2-fanouts.md`) — not fabricated here.
+
+**Generalized rule:** Any per-game external field consumed library-wide on a request path must be persisted by the nightly job and read from the DB — the ERR-0010/0011 precompute rule, now closing its own "where else" note that named multiplayer. When persisting a *classification input*, an empty value on unavailable data is a fabricated classification, not a safe default — omit the write (last-known-good) and route missing data to the designed `missingCount`/unavailable state.
+
+**Where else this assumption may be wrong:** STEAM-2's durable per-user achievement-totals precompute remains a **deferred, currently-unowned residual** (this lane shipped only the cheap TTL right-sizing; the nightly aggregate mirroring `LibraryValueAggregate` is not owned by any theme — recorded here so it cannot be silently dropped). Limiter partitioning (STEAM-4) is explicitly deferred to Phase 6 with the instance-concurrency measurement. First post-deploy nightly run populates `categoryIds` — until then all games are "uncategorized" (designed state); run the guarded cron once manually after deploy.
+
+**Prevented by:** Tripwire tests — Store call count unchanged in the job (`tests/unit/game-store.test.ts`), zero Store calls in the reader on every integration test, `stale === false` pinned; the ERR-0010/0011 suites green throughout.
+
+---
+
+### ERR-0023 — Unbounded snapshot scans, uncached insights aggregates, and the merge-latent baseline starvation
+
+**Date:** 2026-07-15
+**Module:** db, frontend
+**Severity:** High
+**Status:** Fixed
+
+**Symptom:** Every `/insights/*`, `/review/[year]`, and `/history` visit re-scanned the user's **entire lifetime snapshot partition** and re-ran the JS aggregation from scratch: `getAvailableReviewYears` hydrated one row per snapshot to derive ≤ ~6 integers; `getYearInReview` scanned all unlock events ever recorded; `/history` fetched all history to render a 53-week chart. Costs grow monotonically with account age. Separately, the bug-2+bug-3 take-both merge left a latent regression: bug-3's `{gte,lt}` year bound excluded every pre-year row, so bug-2's in-memory baseline derivation (ERR-0019) always came up empty — every review year silently read `partialYear` with a first-in-year floor.
+
+**Root cause:** Snapshot-reading queries passed no `date`/`unlockedAt` bound, so the existing composite indexes (`@@index([steamId, date])`, `@@index([steamId, unlockedAt])`) never pruned (the DATA-7 "missing index" finding dissolved on inspection — the indexes existed; the queries were the defect). No insights aggregate was cached (exactly one `cache(` existed in the insights repositories, and it was the inner SteamSpy lookup). The baseline starvation was a semantic interaction invisible to both branches' own test suites, whose mocks fed pre-year rows through a single mocked query that the real bounded scan would never return.
+
+**Fix (Theme 1, `wayline/optimization/plan/PLAN-theme-1-snapshot-reads.md`):** (T1) main YiR scan keeps bug-3's full `{gte,lt}` bound; `baselineByApp` now comes from its **own bounded fetch** (`groupBy` `lt: yearStart` + keyed read, ≤ 1 row per app) — byte-identical to bug-2's full-history semantics; unlock scan bounded by `unlockedAt`. (T2) `getAvailableReviewYears` uses DB-side `distinct: ['date']` (hydration win everywhere; SQL-transfer win on Postgres). (T3) bug-3's shipped idle bound adopted, verification-only; window-edge margin question handed to bug-3's lane (`wayline/optimization/handoffs/idle-margin-bug3-lane.md`). (T4) `/history` fetches only the rendered window (53 w / 25 mo, `since` floored to the bucket boundary), with an existence probe distinguishing "no data ever" from "no data in window". (T5) every aggregate cached under the single new `TTL.insightsAggregate` (6 h) key with threshold/year/window discriminators; idle dismissals outside the cache.
+
+**Generalized rule:** Never issue a steamId-only `findMany` on an append-only snapshot table — always pass the rendering window so composite indexes prune; when a computation needs context beyond its window (a baseline), fetch it with its own bounded query rather than unbounding the main scan; cache the bounded aggregate (bound+cache are complements — caching alone hides full scans until every cold start); and when a window empties a result, distinguish "no data ever" from "no data in window" before choosing empty-state copy. Test mocks must answer faithfully to the query's captured bounds — a mock that returns rows the real query can't see will mask exactly this class of regression.
+
+**Where else this assumption may be wrong:** Any future reader of `PlaytimeSnapshot`/`AchievementSnapshot`/`AchievementUnlock` (the rule is now in docs/BACKEND.md "Bounded snapshot reads"); nightly-precompute escalation stays available if the `db-rowcount` gated check ever shows multi-second bounded scans. Cross-refs: ERR-0019 (baseline semantics preserved), ERR-0020 (bug-3's bounds adopted), ERR-0010/0011 (precompute lineage).
+
+**Prevented by:** Mock-capture tests pinning every bound (`{gte,lt}` + separate baseline fetch, `unlockedAt` window, `distinct`, windowed `since` + flooring); the faithful two-query mock in `tests/unit/insights-repo-year-in-review.test.ts` (pre-year rows reachable only via the baseline path); bucket-completeness test (red if `since` is unfloored); `tests/unit/insights-cache.test.ts` (warm-cache zero-Prisma, key isolation incl. threshold, dismissal immediacy, SWR preserved); bug-1/2/3 suites green throughout.
+
+---
+
+### ERR-0024 — Unbounded achievement-unlock fan-out in a platform-capped job window (silent truncation)
+
+**Date:** 2026-07-16
+**Module:** jobs
+**Severity:** High
+**Status:** Fixed
+
+**Symptom:** The nightly snapshot job and the first-login onboarding backfill both call `recordAchievementUnlocks` with no `limit`, which selected **every** achievement-bearing game as a candidate (`candidates = all`). Each cold game costs up to 3 `steamLimiter.acquire()` calls at 250 ms each, so the tail grows linearly and unboundedly with library size (~75 s @ M=100) inside a function window that is hard-capped by the platform. The failure mode is **silent truncation**: the serverless window expires mid-loop, later games are simply never recorded that night (nightly) or the onboarding stream is cut with partial data — no error, no signal (STEAM-7/COMP-6, shared tail of STEAM-8/COMP-5; `wayline/optimization/plan/PLAN-theme-5-background-jobs.md`).
+
+**Root cause:** Issue #91 criterion #6 ("records unlock events for ALL achievement games") was implemented as *single-run* completeness, so the omitted-`limit` path had no per-invocation budget at all — the one library-linear external fan-out left after ERR-0003/ERR-0017 bounded the interactive paths, sitting in exactly the place (a background job window) where nothing surfaces the overrun.
+
+**Fix (theme-5 T1):** The unbounded code path is removed. `recordAchievementUnlocks` without an explicit `limit` now processes the union of a **hot set** (top-20 by two-week playtime via the new pure `topGamesByTwoWeekPlaytime` — recent activity is recorded every night) and one **deterministic day-keyed rotation window** of ≤ `ACHIEVEMENT_UNLOCK_NIGHTLY_LIMIT` (40) remaining games (`rotationWindowForDay`: remaining games sorted by `appId`, `ceil(R/40)` windows, index = `dayOfYear(utcDayKey()) mod windowCount` — stateless, no migration, idempotent same-day). Criterion #6 is explicitly weakened to **eventual completeness** (full coverage every `ceil(R/40)` nights; rows carry Steam's real `unlockedAt`, so late recording writes identical rows — delayed, never lost; nothing fabricated). The explicit-`limit` resync path is byte-identical to before (ERR-0017's bound not regressed). Docstring, `docs/ACCEPTANCE.md` (#6 companion note incl. the fresh-user convergence window), `docs/BACKEND.md`, and `docs/DATA_MODEL.md` updated in the open.
+
+**Generalized rule (class rule, generalizing ERR-0003 to jobs):** Unbounded background fan-out in a platform-capped window truncates **silently** — every job fan-out must carry an explicit per-invocation budget (a constant, not a function of dataset size) and its invoking route/page an explicit `maxDuration`; completeness requirements that exceed the budget must be met by *provable convergence across runs* (deterministic rotation/cursor), never by hoping one run fits the window.
+
+**Where else this assumption may be wrong:** The same job window still runs the 2N store passes (`refreshLibraryValueAggregate` + `refreshGameStoreData`) — library-linear, explicitly deferred to the gated STEAM-6 fold decision (theme-5 plan, T3 timings decide); the onboarding invocation cap + `maxDuration` land in theme-5 T2/T3. Any future per-user job pass (friends sync, rarity refresh) inherits this rule.
+
+**Prevented by:** `tests/unit/snapshot-achievement-unlocks.test.ts` — budget cap (≤ 20 + 40 fetches on the no-limit path), hot-set inclusion regardless of window, pure-helper cycle-coverage/idempotence proofs, the rewritten criterion-#6 pin (eventual completeness over one simulated cycle; red if anyone restores single-run semantics or breaks rotation), and the explicit-limit characterization pin (red if the resync bound regresses).
 
 ---
 

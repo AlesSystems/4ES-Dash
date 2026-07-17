@@ -123,6 +123,123 @@ function nextPeriodKey(key: string, bucket: Bucket): string {
 }
 
 // ---------------------------------------------------------------------------
+// Day-granularity fallback (short spans)
+// ---------------------------------------------------------------------------
+
+/** Formats a UTC date as a "YYYY-MM-DD" day key. */
+function dayKey(date: Date): string {
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(date.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/** Advances a "YYYY-MM-DD" day key by one calendar day (UTC). */
+function nextDayKey(key: string): string {
+  const [y, m, d] = key.split('-').map(Number) as [number, number, number];
+  const next = new Date(Date.UTC(y, m - 1, d + 1));
+  return dayKey(next);
+}
+
+/**
+ * Aggregates rows at day granularity, zero-filled from the first to the last
+ * day that appears in the data.
+ *
+ * Cumulative playtime is typically snapshotted once per day, so a within-day
+ * MAX−MIN is 0. Instead we attribute minutes played on day D to the increase
+ * over the PREVIOUS recorded value for that game: sum over games of
+ * max(0, cumulative[D] − cumulative[prev]). The first observed value for a game
+ * is its baseline (no prior reference), so it contributes 0 — identical to how
+ * the bucketed path treats the first sample as the period's MIN.
+ *
+ * Used as a fallback when the requested week/month bucket collapses to a single
+ * period, so the history chart still has ≥2 drawable points instead of hitting
+ * the empty state (bug-1: the period cliff). Never fabricates: the summed
+ * minutes equal the bucketed total (last − first cumulative per game).
+ */
+function aggregateByDay(
+  rows: { appId: number; date: Date; playtimeForever: number }[],
+): PlaytimePoint[] {
+  // Per game, collapse to one cumulative value per day (max seen that day),
+  // then walk days in order attributing the increase to the later day.
+  const gameDayMax = new Map<number, Map<string, number>>();
+  for (const row of rows) {
+    const key = dayKey(row.date);
+    if (!gameDayMax.has(row.appId)) gameDayMax.set(row.appId, new Map());
+    const dayMap = gameDayMax.get(row.appId)!;
+    const prev = dayMap.get(key);
+    dayMap.set(key, prev === undefined ? row.playtimeForever : Math.max(prev, row.playtimeForever));
+  }
+
+  const dayTotals = new Map<string, number>();
+  for (const dayMap of gameDayMax.values()) {
+    const days = Array.from(dayMap.keys()).sort();
+    let prevValue: number | undefined;
+    for (const day of days) {
+      const value = dayMap.get(day)!;
+      if (prevValue !== undefined) {
+        const delta = Math.max(0, value - prevValue);
+        dayTotals.set(day, (dayTotals.get(day) ?? 0) + delta);
+      }
+      prevValue = value;
+    }
+  }
+
+  const allDays = new Set<string>();
+  for (const dayMap of gameDayMax.values()) {
+    for (const day of dayMap.keys()) allDays.add(day);
+  }
+  const foundKeys = Array.from(allDays).sort();
+  if (foundKeys.length === 0) return [];
+  const firstKey = foundKeys[0]!;
+  const lastKey = foundKeys[foundKeys.length - 1]!;
+
+  const result: PlaytimePoint[] = [];
+  let current = firstKey;
+  while (current <= lastKey) {
+    result.push({ period: current, minutes: dayTotals.get(current) ?? 0 });
+    current = nextDayKey(current);
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// History fetch window (Theme 1 / T4 — windowed /history reads, DATA-6)
+// ---------------------------------------------------------------------------
+
+/**
+ * How far back /history fetches snapshot rows, in bucket units: 53 ISO weeks
+ * for the weekly view, 25 calendar months for the monthly view (one full
+ * year/two full years of buckets plus the current partial bucket).
+ */
+export const HISTORY_LOOKBACK: Record<Bucket, number> = { week: 53, month: 25 };
+
+/**
+ * Computes the inclusive lower bound (`since`) for a windowed history fetch:
+ * `now − HISTORY_LOOKBACK[bucket]`, FLOORED to the bucket boundary — the ISO
+ * week start (UTC Monday midnight, matching `aggregatePlaytime`'s ISO
+ * bucketing) for `week`, the UTC month start for `month`.
+ *
+ * The floor is load-bearing: bucket totals are intra-bucket Σ(max−min), so the
+ * oldest rendered bucket must receive ALL of its rows. A mid-bucket `since`
+ * silently under-counts the first bar (the in-window min is higher than the
+ * bucket's true min). Flooring only ever moves `since` earlier, so the window
+ * always covers at least the full lookback.
+ */
+export function historyWindowStart(bucket: Bucket, now: Date = new Date()): Date {
+  if (bucket === 'month') {
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - HISTORY_LOOKBACK.month, 1));
+  }
+  // Week: step back 53 whole weeks from UTC midnight of `now`, then floor to
+  // the Monday of that ISO week (Mon=0 after shifting getUTCDay's Sun=0 base).
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  d.setUTCDate(d.getUTCDate() - HISTORY_LOOKBACK.week * 7);
+  const dow = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - dow);
+  return d;
+}
+
+// ---------------------------------------------------------------------------
 // Main export
 // ---------------------------------------------------------------------------
 
@@ -186,6 +303,17 @@ export function aggregatePlaytime(
       minutes: periodTotals.get(current) ?? 0,
     });
     current = nextPeriodKey(current, bucket);
+  }
+
+  // Step 5 (bug-1: the period cliff). When the requested bucket collapses to a
+  // single period, the history page discards the lone point (< 2 points → empty
+  // state) even though real play happened. Fall back to day-granularity so a
+  // short span (>= 2 distinct snapshot days within one week/month) still yields
+  // a drawable, non-empty series. Never fabricates: day deltas use the same
+  // MAX−MIN logic and sum to the same total.
+  if (result.length < 2) {
+    const byDay = aggregateByDay(rows);
+    if (byDay.length >= 2) return byDay;
   }
 
   return result;

@@ -149,7 +149,9 @@ export function aggregateLibrary(
 
   let totalUnlocked = 0;
   let totalAvailable = 0;
-  const recentUnlocks: MergedAchievement[] = [];
+  // Carry the parsed unlock time alongside each item so the sort comparator
+  // never re-parses dates (COMP-7: parse once per surviving item).
+  const recent: Array<{ item: MergedAchievement; ms: number }> = [];
 
   for (const game of perGame) {
     totalUnlocked += game.unlocked;
@@ -160,18 +162,14 @@ export function aggregateLibrary(
 
       const unlockedMs = new Date(item.unlockedAt).getTime();
       if (unlockedMs >= cutoff) {
-        recentUnlocks.push(item);
+        recent.push({ item, ms: unlockedMs });
       }
     }
   }
 
-  // Sort recent unlocks newest-first.
-  recentUnlocks.sort((a, b) => {
-    // Both unlockedAt are guaranteed non-null here (filtered above).
-    const aTime = a.unlockedAt != null ? new Date(a.unlockedAt).getTime() : 0;
-    const bTime = b.unlockedAt != null ? new Date(b.unlockedAt).getTime() : 0;
-    return bTime - aTime;
-  });
+  // Sort recent unlocks newest-first using the pre-parsed timestamps.
+  recent.sort((a, b) => b.ms - a.ms);
+  const recentUnlocks = recent.map((r) => r.item);
 
   const percent = totalAvailable > 0 ? Math.round((totalUnlocked / totalAvailable) * 100) : 0;
 

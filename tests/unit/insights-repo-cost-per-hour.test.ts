@@ -4,6 +4,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getCostPerHour } from '@/server/repositories/insights/cost-per-hour';
+import { clearCache } from '@/server/cache';
 
 const mockPrisma = vi.hoisted(() => ({
   ownedGame: { findMany: vi.fn() },
@@ -22,6 +23,9 @@ vi.mock('@/server/repositories/store', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // getCostPerHour is cached (T5) — clear between cases so a warm hit never
+  // breaks Prisma call-count expectations (plan: binding).
+  clearCache();
   mockPrisma.ownedGame.findMany.mockResolvedValue([]);
   mockPrisma.game.findMany.mockResolvedValue([]);
 });

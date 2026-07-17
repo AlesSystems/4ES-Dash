@@ -1,11 +1,13 @@
 import { isSteamApiError } from '@/lib/steam/errors';
 import {
+  parseLimitParam,
   parseSortKey,
   parseStatusKey,
   parseViewMode,
   sortGames,
   filterGames,
   filterByStatus,
+  toLibraryTile,
   type LibraryGame,
 } from '@/lib/games/sort';
 import { parseMultiplayerParam, filterToMultiplayer } from '@/lib/games/multiplayer';
@@ -35,7 +37,14 @@ export const dynamic = 'force-dynamic';
 const SHELL = 'px-4 py-8 sm:px-6 lg:px-10';
 
 interface LibraryPageProps {
-  searchParams: { sort?: string; q?: string; status?: string; view?: string; multiplayer?: string };
+  searchParams: {
+    sort?: string;
+    q?: string;
+    status?: string;
+    view?: string;
+    multiplayer?: string;
+    limit?: string;
+  };
 }
 
 export default async function LibraryPage({ searchParams }: LibraryPageProps) {
@@ -76,6 +85,7 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
   const view = parseViewMode(searchParams.view);
   const q = searchParams.q ?? '';
   const multiplayer = parseMultiplayerParam(searchParams.multiplayer);
+  const limit = parseLimitParam(searchParams.limit);
 
   // Only fetch multiplayer category data when the filter is active.
   // Cold-cache Store fetches are expensive — do NOT slow the default library view.
@@ -144,8 +154,13 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
           )
         ) : (
           <LibraryResults
-            key={`${status}-${sort}-${q}`}
-            games={shown}
+            // Sort/filter above use the full LibraryGame (recent/added need
+            // twoWeeks/acquiredAt); only the visible page's tile projection
+            // crosses to the client — payload is bounded by ?limit=, and paging
+            // is URL state (no remount key: LibraryControls drops `limit` when
+            // a set-changing filter key changes).
+            games={shown.slice(0, limit).map(toLibraryTile)}
+            filteredTotal={shown.length}
             view={view}
             playtimeHidden={playtimeHidden}
           />

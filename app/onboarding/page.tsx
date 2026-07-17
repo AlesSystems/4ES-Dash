@@ -21,6 +21,13 @@ import { EmptyState } from '@/components/states/EmptyState';
 
 export const dynamic = 'force-dynamic';
 
+// Non-load-bearing safety budget for the first-login backfill. The achievement
+// fan-out is bounded in code (ONBOARDING_UNLOCK_LIMIT in
+// server/jobs/onboarding-backfill.ts), so this is only a ceiling. 60s is the
+// Vercel Hobby maximum — raise to 300 on Pro after confirming the plan
+// (plan-04 data-ops Vercel check). Mirrors app/settings/page.tsx. (theme-5 T2)
+export const maxDuration = 60;
+
 export const metadata: Metadata = {
   title: 'Setting up',
   description: 'Setting up your 4ES Dash library.',

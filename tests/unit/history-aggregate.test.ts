@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { aggregatePlaytime } from '@/lib/history/aggregate';
+import {
+  aggregatePlaytime,
+  historyWindowStart,
+  HISTORY_LOOKBACK,
+} from '@/lib/history/aggregate';
 
 // ---------------------------------------------------------------------------
 // Helpers to create snapshot rows with UTC dates.
@@ -39,8 +43,10 @@ describe('aggregatePlaytime — monthly bucket', () => {
       row(1, '2026-01-20T00:00:00.000Z', 200),
     ];
     const result = aggregatePlaytime(rows, 'month');
-    // delta for game 1 in 2026-01: max(200) − min(100) = 100
-    expect(result).toEqual([{ period: '2026-01', minutes: 100 }]);
+    // bug-1: a single-month span now falls back to day-granularity so the chart
+    // is drawable. The total played (max 200 − min 100 = 100) is preserved.
+    expect(result.reduce((sum, p) => sum + p.minutes, 0)).toBe(100);
+    expect(result.length).toBeGreaterThanOrEqual(2);
   });
 
   it('sums deltas across multiple games in the same month', () => {
@@ -51,7 +57,9 @@ describe('aggregatePlaytime — monthly bucket', () => {
       row(2, '2026-03-20T00:00:00.000Z', 350), // game 2 delta = 150
     ];
     const result = aggregatePlaytime(rows, 'month');
-    expect(result).toEqual([{ period: '2026-03', minutes: 250 }]);
+    // bug-1: single-month span → day-fallback; summed total (100 + 150) preserved.
+    expect(result.reduce((sum, p) => sum + p.minutes, 0)).toBe(250);
+    expect(result.length).toBeGreaterThanOrEqual(2);
   });
 
   it('produces separate period entries for different months', () => {
@@ -99,10 +107,16 @@ describe('aggregatePlaytime — monthly bucket', () => {
     ]);
   });
 
-  it('returns a single period when all rows are in the same month', () => {
+  it('falls back to per-day points when all rows are in the same month (short-span)', () => {
+    // bug-1: a single-month span must still yield a drawable (≥2 point) series
+    // rather than collapsing to one discarded bucket. Day-granularity fallback.
     const rows = [row(1, '2026-05-01T00:00:00.000Z', 0), row(1, '2026-05-31T00:00:00.000Z', 300)];
     const result = aggregatePlaytime(rows, 'month');
-    expect(result).toEqual([{ period: '2026-05', minutes: 300 }]);
+    expect(result.length).toBeGreaterThanOrEqual(2);
+    // Total minutes played across the span is preserved (0 → 300 = 300).
+    expect(result.reduce((sum, p) => sum + p.minutes, 0)).toBe(300);
+    // Day-granularity keys look like YYYY-MM-DD.
+    expect(result[0]?.period).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });
 
@@ -111,7 +125,9 @@ describe('aggregatePlaytime — monthly bucket', () => {
 // ---------------------------------------------------------------------------
 
 describe('aggregatePlaytime — weekly bucket', () => {
-  it('computes delta for a single game within one ISO week', () => {
+  it('falls back to per-day points when 3 daily rows fall in one ISO week (short-span)', () => {
+    // bug-1: 3 daily snapshots inside ONE ISO week must produce a drawable
+    // multi-point series, not a single week bucket that the page discards.
     // 2026-01-05 is Monday of 2026-W02
     const rows = [
       row(1, '2026-01-05T00:00:00.000Z', 100),
@@ -119,7 +135,10 @@ describe('aggregatePlaytime — weekly bucket', () => {
       row(1, '2026-01-07T00:00:00.000Z', 250),
     ];
     const result = aggregatePlaytime(rows, 'week');
-    expect(result).toEqual([{ period: '2026-W02', minutes: 150 }]);
+    expect(result.length).toBeGreaterThanOrEqual(2);
+    // Total played across the span preserved: 250 − 100 = 150.
+    expect(result.reduce((sum, p) => sum + p.minutes, 0)).toBe(150);
+    expect(result[0]?.period).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
   it('uses ISO week numbering — Jan 1 2026 is in 2026-W01', () => {
@@ -165,7 +184,11 @@ describe('aggregatePlaytime — weekly bucket', () => {
     // In ISO 8601, 2025-12-29 through 2026-01-04 is 2026-W01.
     const rows = [row(1, '2025-12-29T00:00:00.000Z', 50), row(1, '2026-01-04T00:00:00.000Z', 100)];
     const result = aggregatePlaytime(rows, 'week');
-    expect(result[0]?.period).toBe('2026-W01');
+    // bug-1: both dates sit in ONE ISO week (2026-W01) → day-fallback. The
+    // series starts at the first snapshot day and preserves the total (100−50).
+    expect(result[0]?.period).toBe('2025-12-29');
+    expect(result.reduce((sum, p) => sum + p.minutes, 0)).toBe(50);
+    expect(result.length).toBeGreaterThanOrEqual(2);
   });
 });
 
@@ -185,7 +208,9 @@ describe('aggregatePlaytime — multi-game library', () => {
     ];
     // Total: 120 + 180 + 30 = 330
     const result = aggregatePlaytime(rows, 'month');
-    expect(result).toEqual([{ period: '2026-04', minutes: 330 }]);
+    // bug-1: single-month span → day-fallback; summed total across games preserved.
+    expect(result.reduce((sum, p) => sum + p.minutes, 0)).toBe(330);
+    expect(result.length).toBeGreaterThanOrEqual(2);
   });
 
   it('correctly attributes deltas when games span multiple months', () => {
@@ -223,6 +248,80 @@ describe('aggregatePlaytime — output ordering', () => {
     const result = aggregatePlaytime(rows, 'month');
     // Expect Jan, Feb (zero), Mar
     expect(result.map((p) => p.period)).toEqual(['2026-01', '2026-02', '2026-03']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// History window helper (Theme 1 / T4 — windowed /history reads)
+// ---------------------------------------------------------------------------
+
+describe('historyWindowStart — floors the lookback to the bucket boundary (TDD #10)', () => {
+  // Fixed mid-bucket clock: 2026-07-15T12:00Z is a Wednesday, mid-July.
+  const MID_BUCKET_NOW = new Date('2026-07-15T12:00:00.000Z');
+
+  it('week: returns an ISO week start (UTC Monday midnight) ≥ 53 weeks back', () => {
+    const since = historyWindowStart('week', MID_BUCKET_NOW);
+    // Raw now − 53 weeks = Wed 2025-07-09 (mid-bucket) → floored to Mon 2025-07-07.
+    expect(since.toISOString()).toBe('2025-07-07T00:00:00.000Z');
+    expect(since.getUTCDay()).toBe(1); // Monday
+    // The window covers at least the full lookback.
+    expect(MID_BUCKET_NOW.getTime() - since.getTime()).toBeGreaterThanOrEqual(
+      HISTORY_LOOKBACK.week * 7 * 24 * 60 * 60 * 1000,
+    );
+  });
+
+  it('month: returns a UTC month start ≥ 25 months back', () => {
+    const since = historyWindowStart('month', MID_BUCKET_NOW);
+    // now − 25 months = 2024-06-15 (mid-bucket) → floored to 2024-06-01.
+    expect(since.toISOString()).toBe('2024-06-01T00:00:00.000Z');
+    expect(since.getUTCDate()).toBe(1);
+  });
+
+  it('week: a now already on a bucket boundary stays exactly lookback back', () => {
+    // 2026-07-13T00:00Z is a Monday; minus 371 days is Mon 2025-07-07 — the
+    // floor must be a no-op, not slide a further week back.
+    const boundaryNow = new Date('2026-07-13T00:00:00.000Z');
+    expect(historyWindowStart('week', boundaryNow).toISOString()).toBe(
+      '2025-07-07T00:00:00.000Z',
+    );
+  });
+
+  it('exports the per-bucket lookback constants', () => {
+    expect(HISTORY_LOOKBACK).toEqual({ week: 53, month: 25 });
+  });
+});
+
+describe('historyWindowStart — bucket completeness at the window edge (TDD #11)', () => {
+  it('oldest rendered bucket total matches the unwindowed computation', () => {
+    // Fixed clock chosen so the RAW lookback (now − 53 weeks = Wed 2025-07-09)
+    // lands MID-bucket inside ISO week 2025-W28 (Mon Jul 7 – Sun Jul 13).
+    // An unfloored `since` would drop the Mon/early-week rows and under-count
+    // the first bar (min would rise from 100 to 150) — this test goes red then.
+    const now = new Date('2026-07-15T12:00:00.000Z');
+    const since = historyWindowStart('week', now);
+
+    const allRows = [
+      // Pre-window history (must be excluded by the window, present unwindowed).
+      row(1, '2025-06-02T00:00:00.000Z', 40),
+      row(1, '2025-06-30T00:00:00.000Z', 80),
+      // Oldest in-window bucket 2025-W28: min 100, max 200 → total 100.
+      row(1, '2025-07-07T00:00:00.000Z', 100), // Monday — before the raw (unfloored) cutoff
+      row(1, '2025-07-09T00:00:00.000Z', 150),
+      row(1, '2025-07-12T00:00:00.000Z', 200),
+      // A later bucket so the series has ≥2 periods (no day-fallback).
+      row(1, '2025-07-14T00:00:00.000Z', 220), // 2025-W29
+      row(1, '2025-07-18T00:00:00.000Z', 300), // 2025-W29 → total 80
+    ];
+
+    const windowedRows = allRows.filter((r) => r.date.getTime() >= since.getTime());
+    const windowed = aggregatePlaytime(windowedRows, 'week');
+    const unwindowed = aggregatePlaytime(allRows, 'week');
+
+    const oldestRendered = windowed[0]!;
+    expect(oldestRendered.period).toBe('2025-W28');
+    const sameBucketUnwindowed = unwindowed.find((p) => p.period === '2025-W28')!;
+    expect(oldestRendered.minutes).toBe(sameBucketUnwindowed.minutes);
+    expect(oldestRendered.minutes).toBe(100); // full intra-bucket max − min
   });
 });
 

@@ -9,9 +9,11 @@
  *   getAchievementProgress  →  getGameAchievements[] (already cached)
  *                           →  aggregateLibrary
  *
- * All three Steam calls are individually cached under `server/cache/ttl.ts`
- * TTL.playerAchievements (3600 s). The steamId is passed explicitly — never
- * read from getEnv() inside this repository.
+ * All three Steam calls are individually cached under `server/cache/ttl.ts`:
+ * the per-user progress under TTL.playerAchievements, the per-app
+ * schema/global reference data under TTL.achievementSchema /
+ * TTL.achievementGlobal. The steamId is passed explicitly — never read from
+ * getEnv() inside this repository.
  */
 
 import {
@@ -66,12 +68,15 @@ export async function getGameAchievements(steamId: string, appId: number): Promi
   }
 
   // Only games with real player data need schema (display names/icons) + global
-  // percentages. Both are per-game and cached under the 'global' pseudo-steamId.
+  // percentages. Both are per-game and cached under the 'global' pseudo-steamId
+  // with dedicated reference-data TTLs (STEAM-2 residual). Note: the win is
+  // warm-instance-only — the in-process cache empties on serverless cold start,
+  // so full effect awaits the bug-3 durable-cache decision.
   const [schemaResult, globalResult] = await Promise.all([
-    cache(cacheKey('achievement-schema', 'global', appId), TTL.playerAchievements, () =>
+    cache(cacheKey('achievement-schema', 'global', appId), TTL.achievementSchema, () =>
       getSchemaForGame(appId),
     ),
-    cache(cacheKey('achievement-global', 'global', appId), TTL.playerAchievements, () =>
+    cache(cacheKey('achievement-global', 'global', appId), TTL.achievementGlobal, () =>
       getGlobalAchievementPercentages(appId),
     ),
   ]);

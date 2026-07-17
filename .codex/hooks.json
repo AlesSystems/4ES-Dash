@@ -1,0 +1,43 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/Users/altanesmer/Desktop/AlesSystems/4ES-Dash/.codex/hooks/block-npm-yarn.sh'"
+          },
+          {
+            "type": "command",
+            "command": "'/Users/altanesmer/Desktop/AlesSystems/4ES-Dash/.codex/hooks/block-dangerous-bash.sh'"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/Users/altanesmer/Desktop/AlesSystems/4ES-Dash/.codex/hooks/block-migration-edit.sh'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/Users/altanesmer/Desktop/AlesSystems/4ES-Dash/.codex/hooks/remind-docs.sh'"
+          },
+          {
+            "type": "command",
+            "command": "'/Users/altanesmer/Desktop/AlesSystems/4ES-Dash/.codex/hooks/test-gate.sh'"
+          }
+        ]
+      }
+    ]
+  }
+}

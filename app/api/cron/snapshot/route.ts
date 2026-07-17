@@ -23,6 +23,16 @@ import { problemResponse } from '@/server/api/problem';
 
 export const dynamic = 'force-dynamic';
 
+// Explicit job window (theme-5 T3, ERR-0024): every background job window gets
+// an explicit budget + `maxDuration` — never the platform's implicit default.
+// Provisional value 300 (Vercel Pro ceiling). The FINAL value is gated on the
+// `platform-tier` check (gated check #4 in the wayline theme-5 SUMMARY —
+// unmeasurable locally, a stated dependency): if the project reports Hobby
+// tier this DROPS TO 60, and the multi-user loop needs the Phase 6 chunking
+// conversation. Config export, not error handling — the per-user try/catch in
+// runSnapshot() still owns failure isolation. Mirrors app/onboarding/page.tsx.
+export const maxDuration = 300;
+
 /** Constant-time equality of two secrets via fixed-length SHA-256 digests. */
 function secretMatches(provided: string, expected: string): boolean {
   const a = createHash('sha256').update(provided).digest();

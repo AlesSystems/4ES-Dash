@@ -14,6 +14,7 @@
  */
 
 import { prisma } from '@/server/db';
+import { cache, cacheKey, TTL } from '@/server/cache';
 import { requireSteamId } from '@/server/repositories/require-steam-id';
 import {
   rankCostPerHour,
@@ -29,12 +30,26 @@ import {
  *   - priceIsFree === true → free
  *   - priceIsFree === false && priceFinalCents != null → paid
  *   - otherwise → unavailable
+ *
+ * Cached at `TTL.insightsAggregate` under `insights-cost-per-hour:<steamId>`
+ * (Theme 1 / T5, DATA-4). `stale` is the cache's stale-while-revalidate
+ * signal: true only when the loader failed and an expired prior value was
+ * served.
  */
 export async function getCostPerHour(
   steamId: string,
 ): Promise<{ result: CostPerHourResult; stale: boolean }> {
   const id = requireSteamId(steamId, 'getCostPerHour');
+  const { value, stale } = await cache(
+    cacheKey('insights-cost-per-hour', id),
+    TTL.insightsAggregate,
+    () => loadCostPerHour(id),
+  );
+  return { result: value, stale };
+}
 
+/** Uncached loader — DB reads + pure ranking. */
+async function loadCostPerHour(id: string): Promise<CostPerHourResult> {
   const ownedGames = await prisma.ownedGame.findMany({
     where: { steamId: id },
     select: { appId: true, playtimeForever: true },
@@ -83,6 +98,5 @@ export async function getCostPerHour(
     return { appId, name, playtimeMinutes: playtimeForever, price };
   });
 
-  // DB read is never stale
-  return { result: rankCostPerHour(inputs), stale: false };
+  return rankCostPerHour(inputs);
 }

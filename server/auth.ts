@@ -278,8 +278,13 @@ export async function getSessionUser(): Promise<{ steamId: string } | null> {
  * featured/dev profile is needed. Callers receiving '' degrade gracefully
  * (e.g. show a landing page or return 401).
  */
-export async function getViewerSteamId(): Promise<string> {
-  const session = await getSessionUser();
+export async function getViewerSteamId(
+  sessionUser?: { steamId: string } | null,
+): Promise<string> {
+  // De-dupe the session waterfall: callers that already resolved the session
+  // (e.g. an RSC page that also called getOnboardingStatus) pass it through so
+  // we don't hit getServerSession twice on the same render.
+  const session = sessionUser !== undefined ? sessionUser : await getSessionUser();
   if (session?.steamId) return session.steamId;
   // Featured/dev fallback must never leak the owner's account to anonymous
   // production visitors — only apply it outside production.

@@ -27,6 +27,18 @@ import type { OwnedGame } from '@/lib/steam/schemas';
  * Column mapping:
  *   - available(StoreMetadata) → genres = JSON.stringify(meta.genres)
  *   - unavailable(...)         → genres = '[]'
+ *   - available(StoreMetadata) → categoryIds = JSON.stringify(meta.categoryIds)
+ *   - unavailable(...)         → categoryIds OMITTED from update (last-known-good
+ *                                value untouched); null on create (never
+ *                                categorized). NEVER '[]' on unavailable — this
+ *                                deliberately diverges from the genres behavior:
+ *                                '[]' genres are a safe empty display state, but
+ *                                '[]' categoryIds are a *positive* "no
+ *                                multiplayer categories" classification — the
+ *                                multiplayer reader would classify
+ *                                isMultiplayerGame([]) === false and drop the
+ *                                game from missingCount, fabricating a
+ *                                non-multiplayer verdict from missing data.
  *   - available(StorePrice)    → priceFinalCents / priceCurrency, priceIsFree=false
  *   - available(null)          → priceIsFree=true, priceFinalCents/priceCurrency=null
  *   - unavailable(...)         → priceIsFree=null, priceFinalCents/priceCurrency=null
@@ -43,6 +55,12 @@ export async function refreshGameStoreData(games: OwnedGame[]): Promise<void> {
       const genres = isAvailable(metaResult)
         ? JSON.stringify(metaResult.data.genres)
         : '[]';
+      // undefined on unavailable → field omitted from the update below
+      // (last-known-good preserved); create falls back to null. See the
+      // "Column mapping" comment for why this diverges from genres.
+      const categoryIds = isAvailable(metaResult)
+        ? JSON.stringify(metaResult.data.categoryIds)
+        : undefined;
 
       // --- Price ------------------------------------------------------------
       const priceResult = await getGameStorePrice(game.appId);
@@ -72,6 +90,7 @@ export async function refreshGameStoreData(games: OwnedGame[]): Promise<void> {
           appId: game.appId,
           name: game.name,
           genres,
+          categoryIds: categoryIds ?? null,
           priceFinalCents,
           priceCurrency,
           priceIsFree,
@@ -79,6 +98,9 @@ export async function refreshGameStoreData(games: OwnedGame[]): Promise<void> {
         },
         update: {
           genres,
+          // Omit categoryIds entirely when unavailable — preserves the
+          // last-known-good value instead of clobbering it (see Column mapping).
+          ...(categoryIds !== undefined ? { categoryIds } : {}),
           priceFinalCents,
           priceCurrency,
           priceIsFree,

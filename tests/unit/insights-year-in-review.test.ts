@@ -67,6 +67,7 @@ describe('computeYearInReview — empty input', () => {
       totalMinutes: 0,
       topGames: [],
       achievementsUnlocked: 0,
+      partialYear: false,
     });
   });
 });
@@ -118,26 +119,53 @@ describe('computeYearInReview — single game', () => {
 // computeYearInReview — year filtering
 // ---------------------------------------------------------------------------
 
-describe('computeYearInReview — year filtering', () => {
-  it('ignores rows from other years', () => {
+describe('computeYearInReview — prior-year baseline (ERR-0019)', () => {
+  it('counts hours accrued since the pre-year baseline, not just within-year spread', () => {
+    // Regression: playtime is a cumulative counter. The year's gain is
+    // (max in-year) − (baseline from last snapshot before Jan 1), NOT in-year spread.
     const names = new Map([[1, 'Game']]);
     const playtime = [
-      pt(1, '2024-12-31T00:00:00.000Z', 100), // year 2024 — excluded
-      pt(1, '2025-01-01T00:00:00.000Z', 200), // year 2025 — included
-      pt(1, '2025-12-31T00:00:00.000Z', 350), // year 2025 — included
-      pt(1, '2026-01-01T00:00:00.000Z', 400), // year 2026 — excluded
+      pt(1, '2025-01-01T00:00:00.000Z', 200), // year 2025
+      pt(1, '2025-12-31T00:00:00.000Z', 350), // year 2025
     ];
-    const result = computeYearInReview(2025, playtime, [], names);
-    // Within 2025: min=200, max=350 → delta=150
-    expect(result.totalMinutes).toBe(150);
+    const baseline = new Map([[1, 100]]); // last snapshot before Jan 1 = 100
+    const result = computeYearInReview(2025, playtime, [], names, baseline);
+    // Real gain for 2025 = 350 − 100 = 250 (buggy filter-then-min said 150).
+    expect(result.totalMinutes).toBe(250);
+    expect(result.topGames).toEqual([{ appId: 1, name: 'Game', minutesDelta: 250 }]);
+    expect(result.partialYear).toBe(false);
   });
 
-  it('single snapshot in-year produces delta 0 (no second point to compare)', () => {
+  it('a SINGLE in-year snapshot with a pre-year baseline yields a positive delta, not 0', () => {
+    const names = new Map([[1, 'Game']]);
+    const playtime = [pt(1, '2025-07-01T00:00:00.000Z', 500)]; // one in-year snapshot
+    const baseline = new Map([[1, 300]]); // baseline before the year
+    const result = computeYearInReview(2025, playtime, [], names, baseline);
+    expect(result.totalMinutes).toBe(200); // 500 − 300, NOT 0
+    expect(result.topGames).toEqual([{ appId: 1, name: 'Game', minutesDelta: 200 }]);
+    expect(result.partialYear).toBe(false);
+  });
+
+  it('no pre-year baseline (onboarded mid-year) surfaces the partial-year caveat', () => {
+    // Degrade-never-fabricate: with no snapshot before Jan 1, we cannot know the
+    // pre-year floor. We use the first in-year snapshot as the floor AND flag it.
+    const names = new Map([[1, 'Game']]);
+    const playtime = [
+      pt(1, '2025-03-01T00:00:00.000Z', 200), // first in-year — used as floor
+      pt(1, '2025-12-31T00:00:00.000Z', 350),
+    ];
+    const result = computeYearInReview(2025, playtime, [], names);
+    expect(result.totalMinutes).toBe(150); // 350 − 200 (best-effort floor)
+    expect(result.partialYear).toBe(true); // caveat surfaced
+  });
+
+  it('single in-year snapshot with NO baseline is delta 0 and partial-year', () => {
     const names = new Map([[1, 'Game']]);
     const playtime = [pt(1, '2025-07-01T00:00:00.000Z', 500)];
     const result = computeYearInReview(2025, playtime, [], names);
     expect(result.totalMinutes).toBe(0);
     expect(result.topGames).toEqual([]); // delta = 0, not > 0
+    expect(result.partialYear).toBe(true);
   });
 });
 

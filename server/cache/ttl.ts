@@ -8,11 +8,20 @@ export const TTL = Object.freeze({
   recentlyPlayed: 900, // 15 min
   steamLevel: 86400, // 24 h
   playerAchievements: 3600, // 1 h
+  // Per-app achievement reference data ('global' pseudo-steamId caches).
+  // Warm-instance-only win: the in-process cache empties on serverless cold
+  // start, so full effect awaits the bug-3 durable-cache decision (STEAM-2
+  // residual, PLAN-theme-2-external-fanouts T4).
+  achievementSchema: 604800, // 7 d — per-app schema; changes on rare dev pushes (DLC)
+  achievementGlobal: 86400, // 24 h — global unlock percentages; slow-moving
   friendList: 86400, // 24 h
   storeMetadata: 604800, // 7 days
   storePrice: 3600, // 1 h
   steamSpy: 86400, // 24 h — SteamSpy enrichment (#38); honours their ≥24h cache ask
   itadPrice: 86400, // 24 h — ITAD historical-low price (#39); changes slowly
+  // Insights/history aggregates derived from snapshot tables (Theme 1 / T5,
+  // DATA-4). Snapshot tables are written once nightly, so 6 h is safe.
+  insightsAggregate: 21600, // 6 h — snapshot-derived aggregates (idle, YiR, cost/h, genres, history)
 } as const);
 
 export type TtlKey = keyof typeof TTL;

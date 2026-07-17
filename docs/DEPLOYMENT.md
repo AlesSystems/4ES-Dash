@@ -92,6 +92,16 @@ The fastest path to a live instance. One-click via the **Deploy** button in the
   background cron, but on serverless raise the function's `maxDuration` (Vercel
   Hobby allows up to 60 s, Pro up to 300 s) or the run may be cut short and simply
   resume on the next night (writes are idempotent, so nothing is corrupted).
+- **`maxDuration` values are platform-tier dependent** (wayline theme-5, gated
+  check #4 — the effective Vercel function timeout cannot be measured locally).
+  Two routes export an explicit window: `app/api/cron/snapshot/route.ts` uses a
+  provisional `maxDuration = 300` (Pro ceiling) and **must drop to 60 if the
+  deployment is Hobby tier** — in which case the nightly multi-user loop needs
+  the Phase 6 user-loop chunking conversation; `app/onboarding/page.tsx` uses
+  `60` (Hobby maximum) and may be raised to 300 on Pro. Confirm the tier before
+  relying on either value. Each cron run also records per-pass wall-clock
+  timings in `JobRun.payload` (`results[*].timings`, see docs/API.md) so the
+  real window consumption can be read from production data.
 
 ## Docker (planned)
 

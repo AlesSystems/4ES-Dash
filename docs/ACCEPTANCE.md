@@ -197,6 +197,19 @@ These gates apply to every PR regardless of phase. A task is not done until all 
   - If no snapshot data exists for the requested year, a designed empty state is shown ("No data for [year] — make sure the nightly job has been running").
   - Navigation between years (previous / next) only links to years that have at least one snapshot.
 
+  > **Companion note — issue #91 criterion #6 revised (theme-5 T1, ERR-0024).** #91's criterion #6
+  > ("records unlock events for ALL achievement games") shipped with *single-run* semantics: one
+  > nightly (or first-login) run covered every achievement-bearing game. That fan-out was unbounded
+  > in library size inside a platform-capped job window, so the criterion is deliberately weakened
+  > to **eventual completeness**: each run records the hot set (top-20 by two-week playtime) plus one
+  > day-keyed rotation window of ≤ `ACHIEVEMENT_UNLOCK_NIGHTLY_LIMIT` (40) remaining games; every
+  > achievement game is covered within one rotation cycle (`ceil(R/40)` nights), never dropped.
+  > `unlockedAt` is Steam's real timestamp, so late recording writes identical rows.
+  > **Onboarding consequence (disclosed, not silent):** a fresh user's Year-in-Review achievement
+  > counts are incomplete for up to `ceil(R/40)` nights after first login while rotation converges —
+  > previously all existing unlocks populated immediately. Pinned by
+  > `tests/unit/snapshot-achievement-unlocks.test.ts` ("criterion #6 (revised, theme-5 T1)").
+
 - [ ] **Genre / tag breakdown**
   - `/insights/genres` renders a breakdown of library playtime by genre and community tag, expressed as both absolute hours and percentage of total library playtime.
   - Genre and tag data come from `store.steampowered.com/api/appdetails` via `lib/steam/store-client.ts`, cached for 7 days.

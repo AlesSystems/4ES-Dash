@@ -7,6 +7,7 @@
  */
 
 import { prisma } from '@/server/db';
+import { cache, cacheKey, TTL } from '@/server/cache';
 import { getProfile } from '@/server/repositories/profile';
 import { requireSteamId } from '@/server/repositories/require-steam-id';
 import type { LibraryGame } from '@/lib/games/sort';
@@ -69,11 +70,44 @@ export async function getLibraryWithAcquisition(steamId: string): Promise<{
  *
  * @param steamId - Required. Pass getEnv().STEAM_ID at the call site for the
  *   featured/dev default — never read env.STEAM_ID inside this repository.
+ * @param opts.since - Optional lower date bound (inclusive). When provided the
+ *   scan is windowed with `date: { gte: since }` so the compound
+ *   `(steamId, date)` index prunes instead of hydrating the full append-only
+ *   history (Theme 1 / T4, DATA-6). Callers must pass a value floored to the
+ *   rendering bucket's boundary — see `historyWindowStart` in
+ *   `lib/history/aggregate.ts` — or the oldest rendered bucket under-counts.
+ *   Omitted → byte-identical full-history behavior (getFirstSeenDates and
+ *   acquiredAt inference depend on full history and never pass `since`).
+ *
+ * The since-parameterized path (the /history read) is cached at
+ * `TTL.insightsAggregate` (Theme 1 / T5, DATA-4): snapshots are written once
+ * nightly, so the windowed scan is safe to reuse. The unparameterized
+ * full-history path stays UNCACHED — its callers (acquiredAt inference) expect
+ * a direct read. windowCode discriminator: the epoch-ms of `since`
+ * (`since.getTime()`) — callers floor `since` to the bucket boundary, so the
+ * code is stable per rendered window and distinct windows never share an entry.
  */
-export async function getPlaytimeSnapshots(steamId: string): Promise<PlaytimeSnapshotRow[]> {
+export async function getPlaytimeSnapshots(
+  steamId: string,
+  opts?: { since?: Date },
+): Promise<PlaytimeSnapshotRow[]> {
   const id = requireSteamId(steamId, 'getPlaytimeSnapshots');
+  const since = opts?.since;
+  if (since !== undefined) {
+    const { value } = await cache(
+      cacheKey('history-snapshots', id, since.getTime()),
+      TTL.insightsAggregate,
+      () => queryPlaytimeSnapshots(id, since),
+    );
+    return value;
+  }
+  return queryPlaytimeSnapshots(id, undefined);
+}
+
+/** The raw scan — shared by the cached (windowed) and uncached (full) paths. */
+function queryPlaytimeSnapshots(id: string, since: Date | undefined): Promise<PlaytimeSnapshotRow[]> {
   return prisma.playtimeSnapshot.findMany({
-    where: { steamId: id },
+    where: since ? { steamId: id, date: { gte: since } } : { steamId: id },
     select: { appId: true, date: true, playtimeForever: true },
     orderBy: { date: 'asc' },
   });

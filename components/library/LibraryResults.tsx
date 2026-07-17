@@ -1,33 +1,40 @@
-'use client';
-
-import { useState } from 'react';
-import { ChevronDown } from 'lucide-react';
-import type { LibraryGame, ViewMode } from '@/lib/games/sort';
+import type { LibraryTileGame, ViewMode } from '@/lib/games/sort';
 import { GameCard } from './GameCard';
 import { GameRow } from './GameRow';
+import { LoadMoreButton } from './LoadMoreButton';
 
 export interface LibraryResultsProps {
-  games: LibraryGame[];
+  /**
+   * The visible page ONLY — the RSC page slices `shown.slice(0, limit)` and
+   * projects with `toLibraryTile` before passing. Nothing beyond the current
+   * page crosses the RSC→client boundary.
+   */
+  games: LibraryTileGame[];
+  /**
+   * Count of the FILTERED result set (page `shown.length`, computed pre-slice)
+   * — NOT the all-games library total. Drives the "X of Y · N remaining" copy;
+   * these differ whenever a filter is active.
+   */
+  filteredTotal: number;
   view: ViewMode;
   /** When true playtime is hidden by Steam privacy — passed to each game tile. */
   playtimeHidden?: boolean;
 }
 
-const PAGE_SIZE = 24;
-
 /**
- * Results area for the library — switches between grid and list and reveals
- * more games client-side (no extra fetch; the full filtered list is already on
- * the page). Remount via the page's `key` resets pagination when filters change.
+ * Results area for the library — switches between grid and list. A server
+ * component: paging is URL state (`?limit=`), so revealing more games is a
+ * `router.replace` in the {@link LoadMoreButton} client leaf followed by an
+ * RSC re-render with a larger server-side slice. Stays synchronous so jsdom
+ * tests can render it directly (ERR-0006).
  */
 export function LibraryResults({
   games,
+  filteredTotal,
   view,
   playtimeHidden = false,
 }: LibraryResultsProps): JSX.Element {
-  const [visible, setVisible] = useState(PAGE_SIZE);
-  const shown = games.slice(0, visible);
-  const remaining = games.length - shown.length;
+  const remaining = filteredTotal - games.length;
 
   return (
     <div>
@@ -36,7 +43,7 @@ export function LibraryResults({
           className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface"
           role="list"
         >
-          {shown.map((game) => (
+          {games.map((game) => (
             <li key={game.appId}>
               <GameRow
                 appId={game.appId}
@@ -51,7 +58,7 @@ export function LibraryResults({
         </ul>
       ) : (
         <ul className="grid grid-cols-2 gap-[18px] sm:grid-cols-3 xl:grid-cols-4" role="list">
-          {shown.map((game) => (
+          {games.map((game) => (
             <li key={game.appId}>
               <GameCard
                 appId={game.appId}
@@ -69,16 +76,9 @@ export function LibraryResults({
 
       {remaining > 0 && (
         <div className="flex flex-col items-center gap-2.5 py-9">
-          <button
-            type="button"
-            onClick={() => setVisible((v) => v + PAGE_SIZE)}
-            className="inline-flex items-center gap-2 rounded-full border border-border-2 bg-surface px-5 py-2.5 text-body font-medium text-text-1 transition-colors hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
-          >
-            Load {Math.min(PAGE_SIZE, remaining)} more
-            <ChevronDown size={14} strokeWidth={1.75} aria-hidden />
-          </button>
+          <LoadMoreButton remaining={remaining} />
           <span className="font-mono text-caption tabular-nums text-text-3">
-            {shown.length} of {games.length} · {remaining} remaining
+            {games.length} of {filteredTotal} · {remaining} remaining
           </span>
         </div>
       )}

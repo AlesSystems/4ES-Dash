@@ -57,7 +57,7 @@ This document maps every planned 4ES-Dash feature to its data source. It exists 
 | Friends list | **T1** | `ISteamUser/GetFriendList/v1` |
 | Friend online status & current game | **T1** | `ISteamUser/GetPlayerSummaries/v2` |
 | Compare two users (shared games, playtime delta) | **T1** | `IPlayerService/GetOwnedGames/v1` (for each user) |
-| Multiplayer-eligible games filter | **T2** | `store.steampowered.com/api/appdetails` — check `categories` (id 1 = Multi-player, id 9 = Co-op, id 27 = Cross-Platform Multiplayer); cached 7 days; games with no category data are excluded from the filtered set and counted in `missingCount` (surfaced as "Some games could not be categorized" in the UI) |
+| Multiplayer-eligible games filter | **T2** | Derived from **nightly-persisted Store metadata**: the snapshot job's `refreshGameStoreData` pass stores `Game.categoryIds` (from `appdetails` `categories` — id 1 = Multi-player, id 9 = Co-op, id 27 = Cross-Platform Multiplayer) and the filter reads the DB with zero request-path Store calls (ERR-0022). Fallback ladder: `categoryIds` present → classify; `null` (never refreshed, or unavailable at last refresh with no prior value) or malformed → excluded from the filtered set and counted in `missingCount` (surfaced as "Some games could not be categorized"); a game is never classified non-multiplayer from missing data |
 | Activity feed across friends | **T4** ⚠️ | Not available; see [Known limitations](#known-limitations) |
 
 ### Phase 4 — Insights

@@ -9,10 +9,20 @@
  */
 
 import { http, HttpResponse } from 'msw';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getGameAchievements } from '@/server/repositories/achievements';
-import { clearCache } from '@/server/cache';
+import { cache, clearCache, TTL } from '@/server/cache';
 import { steamServer } from '../mocks/steam-server';
+
+// Wrap `cache` in a pass-through spy so we can assert the TTL each call site
+// uses, without changing cache behaviour (real store, real single-flight).
+vi.mock('@/server/cache', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/server/cache')>();
+  return {
+    ...actual,
+    cache: vi.fn(actual.cache),
+  };
+});
 
 const APP_ID = 730;
 const PLAYER_URL = 'https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v0001/';
@@ -63,5 +73,38 @@ describe('getGameAchievements – skip metadata when player data is unavailable'
     expect(result.available).toBe(true);
     if (!result.available) return;
     expect(result.data.total).toBeGreaterThan(0);
+  });
+});
+
+describe('getGameAchievements – cache TTLs', () => {
+  it('schema and global caches use dedicated reference TTLs; player cache unchanged', async () => {
+    const cacheSpy = vi.mocked(cache);
+    cacheSpy.mockClear();
+
+    // Default fixture handlers — happy path so all three cache calls fire.
+    const result = await getGameAchievements('76561198000000000', APP_ID);
+    expect(result.available).toBe(true);
+
+    // Per-user progress: unchanged 1 h TTL (ERR-0003 mitigation surface).
+    expect(cacheSpy).toHaveBeenCalledWith(
+      `steam:player-achievements:76561198000000000:${APP_ID}`,
+      TTL.playerAchievements,
+      expect.any(Function),
+    );
+    // Per-app reference data ('global' pseudo-steamId): dedicated longer TTLs.
+    expect(cacheSpy).toHaveBeenCalledWith(
+      `steam:achievement-schema:global:${APP_ID}`,
+      TTL.achievementSchema,
+      expect.any(Function),
+    );
+    expect(cacheSpy).toHaveBeenCalledWith(
+      `steam:achievement-global:global:${APP_ID}`,
+      TTL.achievementGlobal,
+      expect.any(Function),
+    );
+    // The reference TTLs must actually differ from the per-user TTL — otherwise
+    // this test would pass trivially if the new keys aliased 3600.
+    expect(TTL.achievementSchema).toBeGreaterThan(TTL.playerAchievements);
+    expect(TTL.achievementGlobal).toBeGreaterThan(TTL.playerAchievements);
   });
 });

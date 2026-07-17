@@ -35,6 +35,14 @@ export interface IdleFlag {
 /** Default threshold: 12 hours in a single snapshot-to-snapshot window. */
 export const DEFAULT_IDLE_THRESHOLD_MINUTES = 720;
 
+/**
+ * How far back the idle-detection scan reads snapshots. Bounds the
+ * `PlaytimeSnapshot` query so the `@@index([steamId, date])` is used instead of
+ * an unbounded full-table `steamId` scan (perf). 365 days matches the app's
+ * one-year snapshot horizon and keeps a full year of flags visible.
+ */
+export const IDLE_LOOKBACK_DAYS = 365;
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------

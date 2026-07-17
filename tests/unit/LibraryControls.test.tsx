@@ -1,20 +1,27 @@
 // @vitest-environment jsdom
 import { render, screen, within, fireEvent } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LibraryControls } from '@/components/library/LibraryControls';
 import { SORT_KEYS, SORT_LABELS } from '@/lib/games/sort';
 
 // Shared mock replace function — reassigned per test that needs to assert on it.
 const mockReplace = vi.fn();
+// Current-URL search string the mocked useSearchParams returns — '' by default,
+// set per test that needs pre-existing params (e.g. a stale ?limit=).
+let mockSearch = '';
 
 // Mock next/navigation so the client component can render in jsdom.
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: mockReplace }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(mockSearch),
   usePathname: () => '/library',
 }));
 
 describe('LibraryControls', () => {
+  beforeEach(() => {
+    mockSearch = '';
+  });
+
   const defaultProps = {
     sort: 'playtime' as const,
     query: '',
@@ -159,5 +166,71 @@ describe('LibraryControls', () => {
   it('shows the uncategorized note when multiplayer is true and uncategorizedCount > 0', () => {
     render(<LibraryControls {...defaultProps} multiplayer={true} uncategorizedCount={3} />);
     expect(screen.getByText(/some games could not be categorized/i)).toBeInTheDocument();
+  });
+
+  // ── Pagination reset (TDD row 6) ────────────────────────────────────────────
+  // Set-changing keys (q/status/sort/multiplayer) change the visible result
+  // set, so a stale ?limit= must be dropped; `view` only switches tile markup
+  // and must preserve it (matches HEAD's view-toggle behavior — the old
+  // remount key never included view).
+
+  describe('set-changing filter change drops limit; view toggle keeps it', () => {
+    beforeEach(() => {
+      mockReplace.mockClear();
+      mockSearch = 'sort=name&limit=480';
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    function lastReplaceParams(): URLSearchParams {
+      expect(mockReplace).toHaveBeenCalled();
+      const url = mockReplace.mock.calls.at(-1)?.[0] as string;
+      return new URLSearchParams(url.split('?')[1] ?? '');
+    }
+
+    it('status change drops limit', () => {
+      render(<LibraryControls {...defaultProps} sort="name" />);
+      fireEvent.click(screen.getByRole('button', { name: 'In progress' }));
+      const params = lastReplaceParams();
+      expect(params.get('status')).toBe('in-progress');
+      expect(params.get('sort')).toBe('name');
+      expect(params.has('limit')).toBe(false);
+    });
+
+    it('sort change drops limit', () => {
+      render(<LibraryControls {...defaultProps} sort="name" />);
+      fireEvent.change(screen.getByRole('combobox'), { target: { value: 'recent' } });
+      const params = lastReplaceParams();
+      expect(params.get('sort')).toBe('recent');
+      expect(params.has('limit')).toBe(false);
+    });
+
+    it('search (q) change drops limit', () => {
+      vi.useFakeTimers();
+      render(<LibraryControls {...defaultProps} sort="name" />);
+      fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'hades' } });
+      vi.advanceTimersByTime(250); // flush the search debounce
+      const params = lastReplaceParams();
+      expect(params.get('q')).toBe('hades');
+      expect(params.has('limit')).toBe(false);
+    });
+
+    it('multiplayer toggle drops limit', () => {
+      render(<LibraryControls {...defaultProps} sort="name" multiplayer={false} />);
+      fireEvent.click(screen.getByRole('button', { name: /multiplayer/i }));
+      const params = lastReplaceParams();
+      expect(params.get('multiplayer')).toBe('1');
+      expect(params.has('limit')).toBe(false);
+    });
+
+    it('view toggle preserves limit', () => {
+      render(<LibraryControls {...defaultProps} sort="name" view="grid" />);
+      fireEvent.click(screen.getByRole('button', { name: /list view/i }));
+      const params = lastReplaceParams();
+      expect(params.get('view')).toBe('list');
+      expect(params.get('limit')).toBe('480');
+    });
   });
 });

@@ -145,6 +145,25 @@ Two new Prisma models added in migration `prisma/migrations/20260617101604_phase
 - **Single-flight (#85):** N concurrent misses on the same key collapse onto ONE loader invocation (an `inFlight` promise map). Joiners await the leader's result; SWR is preserved (a failed shared load returns the prior value as `stale`, or rethrows when there is no prior value). `clearCache()` resets both the store and the in-flight map.
 - Invalidation on writes uses `revalidateTag` for RSC and explicit `cache.del(key)` for the API.
 
+### Insights aggregate caching (ERR-0023)
+
+Every insights aggregate is wrapped in `cache(cacheKey(...), TTL.insightsAggregate, loader)` — 6 h against nightly-written snapshot data, so max staleness is under one snapshot cycle. Keys (all via `cacheKey`):
+
+| Key | Discriminators |
+| --- | --- |
+| `steam:insights-idle:<steamId>:<thresholdMinutes>` | threshold resolved to its default **before** keying, so omitted and explicit-default calls share one entry |
+| `steam:insights-year-in-review:<steamId>:<year>` | year |
+| `steam:insights-review-years:<steamId>` | — |
+| `steam:insights-cost-per-hour:<steamId>` | — |
+| `steam:insights-genres:<steamId>` | outer wrap only; the inner per-appId SteamSpy cache entry is separate and unchanged |
+| `steam:history-snapshots:<steamId>:<epochMs>` | bucket-floored window start (`historyWindowStart`), so each rendered window has a stable key |
+
+Design rules: only the expensive snapshot→aggregate stage sits inside the cache — per-request concerns (idle **dismissal** filtering, game-name lookups) run outside it, so a dismissal is visible on the very next request with no invalidation machinery. Ad-hoc resync can leave cost/genre insights up to 6 h stale until TTL expiry — accepted degradation; explicit invalidation-on-sync is a follow-up if it bites. Cache tests must call `clearCache()` in `beforeEach` or warm hits break Prisma call-count assertions.
+
+### Bounded snapshot reads (ERR-0023)
+
+Never issue a steamId-only `findMany` against an append-only snapshot table — always pass the window the surface actually renders, so the composite indexes (`@@index([steamId, date])`, `@@index([steamId, unlockedAt])`) prune. When a computation needs historical context beyond its window — like Year-in-Review's pre-year baseline (ERR-0019) — fetch it with its **own bounded query** (`groupBy` + keyed read, ≤1 row per app); never unbound the main scan to smuggle the context in. When a windowed read comes back empty, distinguish "no data ever" from "no data in window" (cheap existence probe) before choosing empty-state copy.
+
 ### Rate limiters (#85)
 
 `lib/steam/limiter.ts` exports two **separate** token buckets (1 req / 250 ms each):
@@ -180,7 +199,10 @@ Pricing every owned game is O(N) rate-limited Store calls. Doing it on the dashb
 - Jobs are idempotent — re-running the same day's snapshot must not create dupes (compound unique on `(steamId, appId, date)`).
 - `playtimeForever` is monotonic: a reported decrease is clamped up to the latest prior value and logged.
 - Each run writes a `JobRun` row (`running` → `ok`/`error`) with a JSON payload for observability.
-- The nightly run also (a) records per-achievement **unlock events** (`AchievementUnlock`) for all achievement-bearing games via the cached achievement repository, so Year-in-Review counts by real `unlockedAt` (#91) and unlocks outside the most-played set still count, and (b) refreshes the **library-value aggregate** (`LibraryValueAggregate`) so the dashboard reads one row instead of pricing live (#85). Both are per-game fan-outs that belong in the job, never on the request path; both are best-effort (a failure in either is logged and never fails the snapshot).
+- The nightly run also (a) records per-achievement **unlock events** (`AchievementUnlock`) via the cached achievement repository, so Year-in-Review counts by real `unlockedAt` (#91), and (b) refreshes the **library-value aggregate** (`LibraryValueAggregate`) so the dashboard reads one row instead of pricing live (#85). Both are per-game fan-outs that belong in the job, never on the request path; both are best-effort (a failure in either is logged and never fails the snapshot).
+- **Unlock recording is budgeted + rotational (theme-5 T1, ERR-0024).** When `recordAchievementUnlocks` is called without an explicit `limit` (nightly job, onboarding), it no longer fans out over the whole library. Candidates are the union of a **hot set** — top-20 by *two-week* playtime (`topGamesByTwoWeekPlaytime`, falling back to total playtime; distinct from `topGamesByPlaytime`, which sorts by total and still serves the explicit-`limit` resync branch) — plus one **day-keyed rotation window** of at most `ACHIEVEMENT_UNLOCK_NIGHTLY_LIMIT = 40` of the remaining achievement games (`rotationWindowForDay`: remaining games sorted by `appId`, split into `ceil(R/40)` windows, window index = `dayOfYear(utcDayKey()) mod windowCount`). The hot set exists so games where new unlocks actually happen are recorded every night, never delayed by rotation. Per-invocation limiter cost is a constant `≤ (20 + 40) × 3` acquires regardless of library size; full-library coverage converges within one rotation cycle (`ceil(R/40)` nights — *eventual* completeness for criterion #6; rows carry Steam's real `unlockedAt`, so late recording writes identical rows: delayed, never lost). Rotation is stateless (no cursor column, no migration) and idempotent (same UTC day ⇒ same window). The constant is a **fan-out bound, not a TTL** (it lives beside `ACHIEVEMENT_SNAPSHOT_LIMIT` in `server/jobs/snapshot.ts`, not in `server/cache/ttl.ts`); its final value is gated on the prod `db-rowcount`/`platform-tier` checks.
+- `refreshGameStoreData` (the job's Store metadata pass) persists **genres, price fields, and — since ERR-0022 — `categoryIds`** from the same per-game `StoreMetadata` fetch: zero additional Store calls, zero added limiter pressure. The multiplayer repository (`server/repositories/multiplayer.ts`) then classifies from the persisted `Game.categoryIds` with **one DB read and zero request-path Store calls** — `/library?multiplayer=1` is O(1) in external calls instead of N×250 ms limiter-serialized `appdetails` fetches. `categoryIds: null`/malformed rows land in `missingCount` (designed "could not be categorized" state); the returned `stale` flag is pinned `false` (nightly-refreshed reference data carries no stale-while-revalidate signal — never fabricate freshness).
+- Achievement reference caches use dedicated TTL keys (`achievementSchema` 7 d, `achievementGlobal` 24 h in `server/cache/ttl.ts`): game schemas and global unlock percentages are slow-moving per-app reference data, so they no longer expire with the per-user 1 h `playerAchievements` TTL. Warm-instance improvement only, pending the durable-cache decision (bug-3 lane) — the in-process cache still empties on cold start.
 
 ## Validation
 

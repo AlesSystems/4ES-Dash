@@ -5,6 +5,7 @@
  * exclusion counts, and a persistent disclaimer about store prices.
  */
 
+import { Suspense } from 'react';
 import { getCostPerHour } from '@/server/repositories/insights/cost-per-hour';
 import { getViewerSteamId } from '@/server/auth';
 import { EmptyState } from '@/components/states/EmptyState';
@@ -37,32 +38,42 @@ function formatMoney(cents: number, currency: string): string {
   }
 }
 
-export default async function CostPerHourPage() {
-  const viewerId = await getViewerSteamId();
+/**
+ * Skeleton for the ranked-table section — geometry mirrors the table so the
+ * streamed content swaps in without layout shift (no CLS).
+ */
+function CostPerHourSkeleton() {
+  return (
+    <div
+      className="overflow-hidden rounded-lg border border-border bg-surface"
+      aria-busy="true"
+      aria-label="Loading cost per hour"
+    >
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div
+          key={i}
+          className="flex items-center gap-4 border-b border-border px-4 py-3 last:border-0"
+        >
+          <div className="h-4 flex-1 animate-pulse rounded bg-surface-2" />
+          <div className="h-4 w-16 animate-pulse rounded bg-surface-2" />
+          <div className="h-4 w-16 animate-pulse rounded bg-surface-2" />
+          <div className="h-4 w-16 animate-pulse rounded bg-surface-2" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Async section: the slow cost-per-hour query streams behind Suspense. */
+async function CostPerHourSection({ viewerId }: { viewerId: string }) {
   const { result, stale } = await getCostPerHour(viewerId);
   const { ranked, freeGames, excludedNoPlaytime, excludedNoPrice } = result;
 
   const isEmpty = ranked.length === 0 && freeGames.length === 0;
 
   return (
-    <main className={SHELL}>
-      {/* Page heading */}
-      <div className="mb-6">
-        <h1 className="font-serif text-3xl font-semibold text-text-1">Cost per hour</h1>
-        <p className="mt-1 text-sm text-text-3">
-          How much you&apos;ve paid per hour of playtime, ranked by most expensive.
-        </p>
-      </div>
-
+    <>
       {stale && <StaleBanner className="mb-4" />}
-
-      {/* PERSISTENT price disclaimer — always visible */}
-      <div className="mb-6 rounded-lg border border-border bg-surface-2 px-4 py-3">
-        <p className="text-sm text-text-2">
-          <strong className="font-medium text-text-1">Note:</strong> Prices reflect current store
-          prices, not what you paid. Your actual cost may have been different.
-        </p>
-      </div>
 
       {isEmpty ? (
         <EmptyState
@@ -170,6 +181,36 @@ export default async function CostPerHourPage() {
           )}
         </div>
       )}
+    </>
+  );
+}
+
+export default async function CostPerHourPage() {
+  const viewerId = await getViewerSteamId();
+
+  return (
+    <main className={SHELL}>
+      {/* Page heading */}
+      <div className="mb-6">
+        <h1 className="font-serif text-3xl font-semibold text-text-1">Cost per hour</h1>
+        <p className="mt-1 text-sm text-text-3">
+          How much you&apos;ve paid per hour of playtime, ranked by most expensive.
+        </p>
+      </div>
+
+      {/* PERSISTENT price disclaimer — always visible */}
+      <div className="mb-6 rounded-lg border border-border bg-surface-2 px-4 py-3">
+        <p className="text-sm text-text-2">
+          <strong className="font-medium text-text-1">Note:</strong> Prices reflect current store
+          prices, not what you paid. Your actual cost may have been different.
+        </p>
+      </div>
+
+      {/* Slow cost query streams behind its own Suspense boundary so the
+          heading + disclaimer paint immediately (no whole-page block). */}
+      <Suspense fallback={<CostPerHourSkeleton />}>
+        <CostPerHourSection viewerId={viewerId} />
+      </Suspense>
     </main>
   );
 }
